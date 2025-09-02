@@ -19,13 +19,16 @@
 ;----------------------------------------------------------------------
 ;				imports
 ;----------------------------------------------------------------------
+; From math.s
+.importzp pfac
+.importzp sfac
 
 ;----------------------------------------------------------------------
 ;				exports
 ;----------------------------------------------------------------------
 .export strbin
 .export binstr
-.exportzp pfac
+;;.exportzp pfac
 ;.export strbuf
 
 ;----------------------------------------------------------------------
@@ -42,8 +45,8 @@
 	.segment "ZEROPAGE"
 		unsigned short ptr01	;    =$00                  ;input string pointer
 		unsigned char stridx	;   =ptr01+2              ;string index
-		unsigned long pfac	;     =stridx+1             ;primary accumulator
-		unsigned long sfac	;     =pfac+s_fac           ;secondary accumulator
+;		unsigned long pfac	;     =stridx+1             ;primary accumulator
+;		unsigned long sfac	;     =pfac+s_fac           ;secondary accumulator
 		;
 		;	------------------------------------------------------
 		;	Define the above to suit your application.  Moving the

@@ -99,11 +99,19 @@
 ;
 ; Variables:
 ;	Modifiées:
-;		-
+;		- lex_ptr
+;		- lex_prev_a
+;		- lex_save_x
+;		- lex_save_y
+;		- param_type
 ;	Utilisées:
-;		-
+;		- func_table
+;		- funv_addr
+;		- func_yacc_tbl
+;		- lex_tbl
 ; Sous-routines:
-;	-
+;	- get_param
+;	- _find_cmnd
 ;----------------------------------------------------------------------
 .proc get_expr
 		sta	lex_ptr

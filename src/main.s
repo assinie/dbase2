@@ -386,6 +386,7 @@ OPT_CURSOR = 25
 		bcs	exit_err
 
 	loop:
+		jsr	init_aexp
 		lda	global_cursor
 		beq	@cursor_off
 		cursor	on
