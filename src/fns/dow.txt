@@ -1,0 +1,128 @@
+Table jours:	0 : Dimanche
+		6 : Samedi
+
+Table mois:	1 4 4 0 2 5 0 3 6 1 4 6
+
+		0 3 3 6 1 4 6 1 5 0 3 5
+
+Table siécles:	1500 - 1599:	0
+		1600 - 1699:	6
+		1700 - 1799!	4
+		1800 - 1899:	2
+		1900 - 1999:	0
+		2000 - 2099:	6
+		2200 - 2199:	4
+		2200 - 2299:	2
+
+	jj - mm - ccyy
+
+jj + c(mm) + c(ss) + yy + (yy/4) = n
+Jour = n mod 7
+
+Si année bisextile et mois < Mars => retrancher 1 au jour obtenu
+
+
+;	#include <stdio.h>
+;	typedef struct date
+;	{
+;		int jour, mois, annee;
+;	}
+;	Date;
+;	int jour(Date date)
+;	{
+;		int annee = date.annee;
+;		int mois = date.mois;
+;		int jour = date.jour;
+;		annee = (mois <= 2) ? (annee - 1) : annee;
+;		mois = (mois <= 2) ? (mois + 13) : (mois + 1);
+;		return (1461 * annee) / 4 + (153 * mois) / 5 + jour;
+;	}
+;	int main(void)
+;	{
+;		Date date1 = { 22, 11, 2004 }, date2 =  { 12, 8, 2007};
+;		printf("%d\n", jour(date2) - jour(date1));
+;		return 0;
+;	}
+
+
+(1461 * année1)/4 + (153 * mois1)/5 + jour1 - ( (1461 * année2)/4 + (153 * mois2)/5 + jour2)
+=> (1461 * année1)/4 - (1461 * année2)/4 + (153 * mois1)/5 - (153 * mois2)/4 +jour1 -jour2
+
+=> (1461 * année1 - 1461 * année2)/4 + (153 * mois1 - 153 * mois2)/5 + (jour1-jour2)
+=> (1461 * (année1-année2))/4 + (153 * (mois1-mois2))/5 + (jour1-jour2)
+
+
+
+
+------------------
+
+DATE(IF(0+(VALUE(IF(LEN(A1)=5,LEFT(A1,2),LEFT(A1,1))))<30,
+      IF(LEN(A1)=5,2000,IF(LEFT(A1,1)<=RIGHT(YEAR(NOW()),1),2010, 2000)),1900)
+      +VALUE(IF(LEN(A1)=5,LEFT(A1,2),LEFT(A1,1))),1,RIGHT(A1,3))
+
+
+remplacer 2010 par 2000+(MID(YEAR(NOW()),3,1)*10) pour la décade actuelle
+
+ddjjj => dd < 30 => date(2000 + dd, 1, jjj)
+	dd >= 30 => date(1900 + dd, 1, jjj)
+
+djjj => d < 30 =>
+		d <= right(year(now()),1) => date(2010+d, 1, jjj)
+		d >  right(year(now()),1) => date(2000+d, 1, jjj)
+
+
+en 2015: 5001 = 15001 = 01/01/2015
+	4001 => 01/01/2014
+	9001 => 01/01/2009
+
+
+
+jj mm ccyy + n
+while n:
+	if jj+n > j(mm)
+		mm = mm +1
+		n = n - (j(mm)-jj) -> n = n - j(mm) + jj -> n = jj+n -j(mm)
+		if mm = 13
+			ccyy = 1
+	else
+		jj = jj+n
+		n=0
+wend
+
+
+j(mm):	31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
+if mm = 2
+	if ccyy = cc00
+		if cc/4 == int(cc/4) <-> (cc & $03) == 0
+			j(mm) += 1
+
+	else if yy / 4 == int(yy/4) <-> (yy & $03) == 0
+		j(mm) += 1
+
+
+conversion bcd -> binaire
+; Entrée:
+;	A: valeur BCD
+;
+; Sortie:
+;	A: valeur binaire
+;	Y: modifié
+;	X: inchangé
+
+	bcd_bin:
+		;	 0    10   20   30   40   50   60   70   80   90
+		.byte	$00, $0a, $14, $1e, $28, $32, $3c, $46, $50, $5a
+
+	pha
+	and	#$0f
+	sta	temp
+	pla
+	lsr
+	lsr
+	lsr
+	lsr
+	tay
+	lda	bcd_bin,y
+	adc	temp
+
+	rts

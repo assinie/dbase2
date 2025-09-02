@@ -1,0 +1,430 @@
+;----------------------------------------------------------------------
+;			includes cc65
+;----------------------------------------------------------------------
+.feature string_escapes
+
+.include "telestrat.inc"
+.include "errno.inc"
+
+;----------------------------------------------------------------------
+;			includes SDK
+;----------------------------------------------------------------------
+.include "SDK.mac"
+.include "types.mac"
+
+;----------------------------------------------------------------------
+;			include application
+;----------------------------------------------------------------------
+.include "include/dbase.inc"
+
+;----------------------------------------------------------------------
+;				imports
+;----------------------------------------------------------------------
+.import fp
+
+; From debug
+.import PrintHexByte
+
+;----------------------------------------------------------------------
+;				exports
+;----------------------------------------------------------------------
+.export fgets
+.export buffer_reset
+
+.export linenum
+
+.export fpos_text
+
+; From file
+.import reopen
+.import close
+
+; compatibilité submit
+.export fpos_prev
+
+;----------------------------------------------------------------------
+;			Defines / Constantes
+;----------------------------------------------------------------------
+e1 = $e1
+TEXTFILE = 1
+
+;----------------------------------------------------------------------
+;				Page Zéro
+;----------------------------------------------------------------------
+.pushseg
+	.segment "ZEROPAGE"
+		unsigned short address
+
+.popseg
+
+;----------------------------------------------------------------------
+;				Variables
+;----------------------------------------------------------------------
+.pushseg
+	.segment "DATA"
+		; Numéro de ligne du fichier
+		unsigned char linenum[2]
+
+		unsigned short max_line_size
+
+		.if ::TEXTFILE
+			unsigned long fpos_text
+
+			; compatibilité submit
+			unsigned long fpos_prev
+		.else
+			fpos_text := fpos
+		.endif
+
+.popseg
+
+;----------------------------------------------------------------------
+;			Programme principal
+;----------------------------------------------------------------------
+.segment "CODE"
+
+;----------------------------------------------------------------------
+;
+; Entrée:
+;	AY: Adresse du tampon
+;	X : Taille du tampon
+;
+; Sortie:
+;	A  : 0 ou code erreur
+;	X  : Modifié
+;	Y  : 0
+;	C=0: Ok
+;	C=1: Erreur
+;
+; Variables:
+;       Modifiées:
+;               address
+;		max_line_size
+;       Utilisées:
+;               -
+; Sous-routines:
+;       fgetc
+;----------------------------------------------------------------------
+.if TEXTFILE
+	.proc fgets
+			sta	address
+			sty	address+1
+			stx	max_line_size
+
+			jsr	fgetc
+			bcs	eof
+
+			; Incrémeente le numéro de ligne
+			;php
+			; sed
+			clc
+			lda	linenum
+			adc	#$01
+			sta	linenum
+			lda	linenum+1
+			adc	#$00
+			sta	linenum+1
+			; cld
+			;plp
+
+			; [ Sauvegarde la position actuelle
+			; (compatibilité submit pour cmnd_goto)
+			ldy	#$03
+		loop_fpos:
+			lda	fpos_text,y
+			sta	fpos_prev,y
+			dey
+			bpl	loop_fpos
+			; ]
+			iny
+			jmp	skip
+
+		loop:
+			; fread	(address), #1, 1, fp
+			; cmp	#$01
+			; bne	eof
+			jsr	fgetc
+			ldy	#$00
+			bcs	end
+
+		skip:
+			; En principe on ne peut pas avoir de caractère $00 dans un fichier texte
+			; ldy	#$00
+			lda	(address),y
+			beq	end
+
+			; <CR>? il faut lire un autre caractère (msdos: <CR><LF>)
+			cmp	#$0d
+			beq	loop
+
+			; <LF>?
+			cmp	#$0a
+			beq	end
+
+			dec	max_line_size
+			beq	errMemFull
+
+			inc	address
+			bne	loop
+			inc	address+1
+			bne	loop
+
+		errMemFull:
+			; prints	"Line too long "
+			; lda	linenum+1
+			; jsr	PrintHexByte
+			; lda	linenum
+			; jsr	PrintHexByte
+			; crlf
+			; lda	#e1
+			; bne	error
+			lda	#$00
+			tay
+			sta	(address),y
+
+		error18:
+			; 74 ^--- Truncated.
+			; 18 Line exceeds maximum of 254 characters.
+			lda	#18
+			sec
+			rts
+
+		end:
+			; Y=0 => place un caractère nul à la place du <CR>
+			tya
+			sta	(address),y
+
+			; Si ECHO ON
+			; print	line
+			; crlf
+
+			ldx	max_line_size
+			clc
+			rts
+
+		eof:
+			; print	eof_msg
+			lda	#$ff
+
+		error:
+			sec
+			rts
+	.endproc
+
+	;----------------------------------------------------------------------
+	;
+	; Entrée:
+	;	-
+	;
+	; Sortie:
+	;
+	; Variables:
+	;	Modifiées:
+	;		-
+	;	Utilisées:
+	;		-
+	; Sous-routines:
+	;	-
+	;----------------------------------------------------------------------
+	.proc fgetc
+			ldx	buffer_pos
+			cpx	buffer_size
+			bcc	getc
+
+			jsr	fill_buffer
+			cpx	buffer_size
+			beq	eof
+			bcs	end
+
+		getc:
+			ldy	#$00
+			lda	buffer,x
+			sta	(address),y
+			inc	buffer_pos
+
+			; Incrémente le pointeur du fichier pour Goto
+			inc	fpos_text
+			bne	end
+			inc	fpos_text+1
+			bne	end
+			inc	fpos_text+2
+			bne	end
+			inc	fpos_text+3
+			; beq	overFlow
+		end:
+		eof:
+			rts
+
+		fill_buffer:
+			; Le ch376 ne peut lire que 254 octets en une seule fois
+			; /!\ ATTENTION: cmnd_restore appelle aussi fgets mais
+			;     ouvre un autre fichier que le script en cours.
+			;     Il faut modifier reopen pour ouvrir le bon fichier.
+			jsr	reopen
+			bcs	open_error
+			fread	buffer, #$fe, 1, fp
+			; cmp	#$fe
+			; bne	eof
+
+			sta	buffer_size
+
+			jsr	close
+
+			ldx	#$00
+			stx	buffer_pos
+
+			; clc
+		open_error:
+			rts
+
+		; eof:
+			; rts
+
+		buffer_pos: .byte	$00
+		buffer_size: .byte	$00
+		buffer: .res	256;0
+
+	.endproc
+
+	;----------------------------------------------------------------------
+	;
+	; Entrée:
+	;	-
+	;
+	; Sortie:
+	;
+	; Variables:
+	;	Modifiées:
+	;		-
+	;	Utilisées:
+	;		-
+	; Sous-routines:
+	;	-
+	;----------------------------------------------------------------------
+	.proc buffer_reset
+			lda	#$00
+			sta	fgetc::buffer_pos
+			sta	fgetc::buffer_size
+
+;			sta	fpos_text
+;			sta	fpos_text+1
+;			sta	fpos_text+2
+;			sta	fpos_text+3
+			rts
+	.endproc
+
+.else
+
+	.proc fgets
+			sta	address
+			sty	address+1
+
+			stx	max_line_size
+			lda	#$00
+			sta	max_line_size+1
+
+			; Incrémeente le numéro de ligne
+			; php
+			; sed
+			clc
+			lda	linenum
+			adc	#$01
+			sta	linenum
+			lda	linenum+1
+			adc	#$00
+			sta	linenum+1
+			; plp
+
+		loop:
+			fread	(address), #2, 1, fp
+			cmp	#$02
+			bne	eof
+
+			ldy	#$01
+			lda	(address),y
+			cmp	max_line_size+1
+			bne	readline
+			dey
+			lda	(address),y
+			cmp	max_line_size
+
+		readline:
+			bcs	errMemFull
+
+			; Longueur de la ligne
+			ldy	#$00
+			lda	(address),y
+			sta	max_line_size
+			iny
+			lda	(address),y
+			sta	max_line_size+1
+
+			; Lit la ligne
+			fread	(address), (max_line_size), 1, fp
+			cmp	max_line_size
+			bne	eof
+			cpx	max_line_size+1
+			bne	eof
+
+		end:
+			; Ajoute un caractère nul à la fin de la ligne
+			ldy	max_line_size
+			lda	#$00
+			sta	(address),y
+
+			; Si ECHO ON
+			; print	line
+			; crlf
+
+			ldx	max_line_size
+			clc
+			rts
+
+		errMemFull:
+			; prints	"Line too long "
+			; lda	linenum+1
+			; jsr	PrintHexByte
+			; lda	linenum
+			; jsr	PrintHexByte
+			; crlf
+
+			lda	#$00
+			tay
+			sta	(address),y
+
+			lda	#e1
+			bne	error
+
+		eof:
+			; print	eof_msg
+			lda	#$e4
+
+		error:
+			sec
+			rts
+
+		;eof_msg:
+		;	.asciiz "EOF error\r\n"
+	.endproc
+
+
+	;----------------------------------------------------------------------
+	;
+	; Entrée:
+	;	-
+	;
+	; Sortie:
+	;
+	; Variables:
+	;	Modifiées:
+	;		-
+	;	Utilisées:
+	;		-
+	; Sous-routines:
+	;	-
+	;----------------------------------------------------------------------
+	.proc buffer_reset
+			; Compatibilité avec mode TEXTE
+			rts
+	.endproc
+.endif

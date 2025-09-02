@@ -1,0 +1,34 @@
+;.segment "HEADER"
+;	.word	tbl_entries, tbl_size
+;
+;.segment "INDEX"
+;	.dword	offset1, offset2, ...
+;
+;.segment "TABLE"
+;	.asciiz	msg1, msg2, ...
+
+
+
+.ifndef TABLE_MAC
+	tbl_size .set 0
+	tbl_entries .set 0
+
+	.macro add_msg message
+		.pushseg
+
+		.segment "INDEX"
+			.dword	tbl_size
+
+		.segment "TABLE"
+			.asciiz message
+
+		.popseg
+
+		tbl_entries .set tbl_entries + 1
+		tbl_size .set tbl_size + .strlen(message)+1
+	.endmacro
+
+	TABLE_MAC = 1
+.endif
+
+

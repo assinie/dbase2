@@ -1,0 +1,707 @@
+;----------------------------------------------------------------------
+;			includes cc65
+;----------------------------------------------------------------------
+.feature string_escapes
+.feature loose_char_term
+
+.include "telestrat.inc"
+.include "errno.inc"
+.include "fcntl.inc"
+
+XMAINARGS = $2C
+XGETARGV = $2E
+
+;----------------------------------------------------------------------
+;			includes SDK
+;----------------------------------------------------------------------
+.include "SDK.mac"
+.include "types.mac"
+.include "case.mac"
+
+;----------------------------------------------------------------------
+;			include application
+;----------------------------------------------------------------------
+.include "include/dbase.inc"
+.include "macros/utils.mac"
+
+;----------------------------------------------------------------------
+;				imports
+;----------------------------------------------------------------------
+; From main
+.import submit_line
+.import entry
+
+; From utils
+.import _find_cmnd
+.import clear_entry
+
+; From yacc
+.importzp yacc_ptr
+
+; From simple_list
+.import var_search
+.import var_getvalue
+.importzp object
+
+; From eval_expr
+.import func_table
+.import func_addr
+;.import func_param_count
+
+.import lex_tbl
+.import func_yacc_tbl
+
+; From strbin
+.import strbin
+.importzp pfac
+
+; Chaines statiques
+;.import opt_on_off
+;.import set_opt
+.import opt_to
+.import opt_date_fmt
+
+.import cmp_oper
+
+.import osenv
+
+.importzp _argv
+.import _argc
+.import get_argv
+
+.import cmnd_store
+
+
+;----------------------------------------------------------------------
+;			From lex_common.s
+;----------------------------------------------------------------------
+.import skip_spaces
+
+.import ident
+.import ident1
+.import string
+.import stringz_flg
+.import value
+.import bcd_value
+.import logic_value
+.import param_type
+.import param1_type
+.import param1
+.importzp pfac1
+
+;.import on_off_flag
+.import set_opt_num
+.import comp_oper
+
+.importzp lex_ptr
+.importzp lex_work_ptr
+
+.import lex_save_a
+.import lex_save_x
+.import lex_save_y
+.import lex_prev_y
+
+.import lex_delim
+.import lex_strict
+
+;----------------------------------------------------------------------
+;				TEMPORAIRE
+;----------------------------------------------------------------------
+.import get_ident
+.import get_word
+.import get_string
+.import get_int
+.import get_on_off
+.import get_set_opt
+.import get_date_fmt
+.import get_string_opt
+.import get_to_ident_opt
+.import get_literal
+.import get_param
+.import get_param_num
+.import get_param_str
+.import get_ident_opt
+.import get_expr
+.import get_expr1
+.import get_expr_num
+.import get_expr_num1
+.import get_expr_str
+.import get_expr_str1
+.import get_expr_date
+.import get_term_num
+.import get_term_str
+.import get_term
+.import get_filename
+.import get_cmp_op
+.import get_line
+.import get_vargs
+
+;----------------------------------------------------------------------
+;				exports
+;----------------------------------------------------------------------
+
+
+;----------------------------------------------------------------------
+;                       Segments vides
+;----------------------------------------------------------------------
+.segment "STARTUP"
+.segment "INIT"
+.segment "ONCE"
+
+;----------------------------------------------------------------------
+;			Defines / Constantes
+;----------------------------------------------------------------------
+
+;----------------------------------------------------------------------
+;				Page Zéro
+;----------------------------------------------------------------------
+.pushseg
+	.segment "ZEROPAGE"
+.popseg
+
+;----------------------------------------------------------------------
+;				Variables
+;----------------------------------------------------------------------
+.pushseg
+	.segment "DATA"
+		; Pour get_vargs
+
+		; Pour get_term_xxx
+
+;		unsigned char prev_y
+;		unsigned char strict
+;		unsigned char var_type
+;		unsigned char filename[FILENAME_LEN]
+.popseg
+
+;----------------------------------------------------------------------
+;			Chaines statiques
+;----------------------------------------------------------------------
+.pushseg
+	.segment "RODATA"
+
+.popseg
+
+;----------------------------------------------------------------------
+;			Programme principal
+;----------------------------------------------------------------------
+.segment "CODE"
+
+
+
+
+
+;----------------------------------------------------------------------
+;
+; Entrée:
+;	AX: adresse de la ligne
+;	Y: offset
+;
+; Sortie:
+;
+; Variables:
+;	Modifiées:
+;		-
+;	Utilisées:
+;		-
+; Sous-routines:
+;	-
+;----------------------------------------------------------------------
+.if 0
+.proc get_expr
+		; expr := <value> [<op> <value>]
+		; value:= <ident> | <val_num> | <string> | <fn(> <value> ")"
+		sta	lex_ptr
+		stx	lex_ptr+1
+		sty	lex_save_y
+
+		; Chaine?
+		lda	(lex_ptr),y
+		cmp	#'"'
+		beq	_string
+		cmp	#'''
+		beq	_string
+
+		; Nombre?
+		jsr	get_int
+		bcc	suite
+
+		; Fonction?
+		ldx	lex_save_y
+		lda	#<func_table
+		ldy	#>func_table
+		jsr	_find_cmnd
+		bcc	function
+
+		; Replace l'offset dans la ligne dans Y
+		stx	lex_save_y
+		ldy	lex_save_y
+
+		; Identificateur?
+		lda	lex_ptr
+		lda	lex_ptr+1
+		jsr	get_ident
+		bcc	suite
+
+	error:
+		lda	#$01
+		sec
+		rts
+
+	function:
+		clc
+		rts
+
+	_string:
+		jsr	get_string
+		bcs	error
+
+	suite:
+		clc
+		rts
+.endproc
+.endif
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.if 0
+.export get_eol
+.export expect_string_delim
+.export get_int_or_null
+.export get_signed_int
+.export get_literal
+.export get_string_or_null
+.export get_string_strict
+.export get_int_or_null
+.export get_var_int_or_str
+.export get_ident_opt
+.export get_filename
+	.export filename
+
+.export var_type
+
+;----------------------------------------------------------------------
+; .* $
+;
+; Entrée:
+;
+; Sortie:
+;
+; Variables:
+;	Modifiées:
+;		-
+;	Utilisées:
+;		-
+; Sous-routines:
+;	-
+;----------------------------------------------------------------------
+.proc get_eol
+		sta	lex_work_ptr
+		stx	lex_work_ptr+1
+
+		dey
+	loop:
+		iny
+		lda	(lex_work_ptr),y
+		bne	loop
+
+	end:
+		clc
+		rts
+.endproc
+
+;----------------------------------------------------------------------
+; ( ''' .+ ''' ) | ('"' .+ '"')
+;
+; Entrée:
+;
+; Sortie:
+;
+; Variables:
+;	Modifiées:
+;		-
+;	Utilisées:
+;		-
+; Sous-routines:
+;	-
+;----------------------------------------------------------------------
+.proc get_string_strict
+		sec
+		jmp	get_string
+.endproc
+
+;----------------------------------------------------------------------
+; ([0-9]+) | $
+;
+; Entrée:
+;	AX: adresse de la ligne
+;	Y: offset
+; Sortie:
+;
+; Variables:
+;	Modifiées:
+;		-
+;	Utilisées:
+;		-
+; Sous-routines:
+;	-
+;----------------------------------------------------------------------
+.proc get_int_or_null
+		sta	lex_work_ptr
+		stx	lex_work_ptr+1
+
+		lda	(lex_work_ptr),y
+		beq	end
+
+		; Valeur non signée
+		clc
+		; Valeur signée
+		; sec
+
+		; Conserve les '0'
+		;bit	sev
+		; Supprime les '0'
+		clv
+		lda	lex_work_ptr
+		jmp	get_int
+
+	end:
+		; Indique pas de valeur
+		lda	#'*'
+		sta	value
+
+		lda	#$00
+		clc
+		rts
+.endproc
+
+;----------------------------------------------------------------------
+; [+-]?[0-9]+
+;
+; Entrée:
+;	AX: adresse de la ligne
+;	Y: offset
+; Sortie:
+;
+; Variables:
+;	Modifiées:
+;		-
+;	Utilisées:
+;		-
+; Sous-routines:
+;	-
+;----------------------------------------------------------------------
+.proc get_signed_int
+		; Valeur non signée
+		;clc
+		; Valeur signée
+		sec
+
+		; Conserve les '0'
+		;bit	sev
+		; Supprime les '0'
+		clv
+
+		jmp	get_int
+.endproc
+
+;----------------------------------------------------------------------
+; '$'<ident> | <int> | <string>
+;
+; Entrée:
+;	AX: adresse de la ligne
+;	Y: offset
+;
+; Sortie:
+;	C: 0->Ok, 1->Erreur
+;	var_type: 'V', 'N', 'S'
+;	AXY: fonction du type
+;
+; Variables:
+;	Modifiées:
+;		var_type
+;
+;	Utilisées:
+;		-
+; Sous-routines:
+;	-
+;----------------------------------------------------------------------
+.proc get_var_int_or_str
+		sta	lex_work_ptr
+		stx	lex_work_ptr+1
+
+		lda	(lex_work_ptr),y
+		cmp	#'$'
+		bne	integer
+
+	variable:
+		lda	#'V'
+		sta	var_type
+
+		; Copie de ident vers ident_dst
+		ldy	#$ff
+	loop:
+		iny
+		lda	ident,y
+		sta	ident_dst,y
+		bne	loop
+
+		; Saute le '$'
+		ldy	lex_save_y
+		iny
+		; Délimiteurs: ' ' | EOL
+		sec
+		; Conversion minuscules/MAJUSCULES
+		clv
+		lda	lex_work_ptr
+		jmp	get_ident
+
+	integer:
+		lda	#'N'
+		sta	var_type
+		lda	lex_work_ptr
+
+		; Valeur non signée
+		; clc
+		; Valeur signée
+		sec
+		; Conserve les '0'
+		; bit	sev
+		; Supprime les '0'
+		clv
+		jsr	get_int
+		bcc	end
+
+	string:
+		lda	#'C'
+		sta	var_type
+
+		lda	lex_work_ptr
+		ldx	lex_work_ptr+1
+		ldy	lex_save_y
+		; Chaine libre
+		; clc
+		; Chaine avec délimiteurs
+		sec
+		jmp	get_string
+
+	end:
+	sev:
+		rts
+.endproc
+
+;----------------------------------------------------------------------
+; ['"]
+;
+; Entrée:
+;
+; Sortie:
+;
+; Variables:
+;	Modifiées:
+;		-
+;	Utilisées:
+;		-
+; Sous-routines:
+;	-
+;----------------------------------------------------------------------
+.proc expect_string_delim
+		sta	lex_work_ptr
+		stx	lex_work_ptr+1
+
+		lda	(lex_work_ptr),y
+		cmp	#'''
+		beq	ok
+
+		cmp	#'"'
+		bne	error
+
+	ok:
+		; On n'incrémente pas Y car la function appelée à la suite
+		; de expect_string_delim est get_string
+		; iny
+		clc
+		rts
+
+	error:
+		sec
+		rts
+.endproc
+
+;----------------------------------------------------------------------
+; <ident>?
+;
+; Entrée:
+;	AX: adresse de la ligne
+;	Y: offset
+;
+; Sortie:
+;	C: 0
+;	var_type: 'V', 'N', 'S'
+;	AXY: fonction du type
+;
+; Variables:
+;	Modifiées:
+;		var_type
+;
+;	Utilisées:
+;		-
+; Sous-routines:
+;	-
+;----------------------------------------------------------------------
+.proc get_ident_opt
+		sta	lex_work_ptr
+		stx	lex_work_ptr+1
+
+		; Fin de ligne?
+		lda	(lex_work_ptr),y
+		beq	no_ident
+
+		; Sauvegarder Y pour que display_vars puisse le récupérer pour
+		; remonter une erreur en  mettant le curseur au début de l'ident
+		; et non à la fin
+
+		; Délimiteurs: ' ' | EOL
+		sec
+		; Conversion minuscules/MAJUSCULES
+		clv
+		lda	lex_work_ptr
+		jsr	get_ident
+;		bcs	end
+
+		lda	#'I'
+		sta	var_type
+;	end:
+		rts
+
+	no_ident:
+		lda	#$00
+		sta	var_type
+		clc
+		rts
+.endproc
+
+;----------------------------------------------------------------------
+; [A-Za-z0-9_/]+ (' '|$)
+;
+; Entrée:
+;	AX: adresse de la ligne
+;	Y: offset
+;	C: 0 -> accepte n'importe quel caractère non alphanumérique comme
+;	   délimiteur
+;	   1 -> accepte uniquement un ' '
+;	V: 0->full path, 1-> filename only
+;	;V: 0-> conversion minuscules/MAJUSCULES
+;	;   1 -> pas de conversion
+;
+; Sortie:
+;	C: 0-> Ok, 1-> erreur
+;	A: 0
+;	X: longueur du nom de fichier
+;	Y: offset vers le caractère suivant
+;
+; Variables:
+;	Modifiées:
+;		filename
+;
+;	Utilisées:
+;		-
+; Sous-routines:
+;	-
+;----------------------------------------------------------------------
+.proc get_filename
+		sta	lex_work_ptr
+		stx	lex_work_ptr+1
+
+		; Flag delimiteur
+		lda	#$00
+		ror
+		sta	lex_strict
+
+		dey
+		ldx	#$ff
+
+	loop:
+		inx
+		cpx	#FILENAME_LEN
+		beq	error2
+
+		iny
+
+		; Fin de ligne?
+		lda	(lex_work_ptr),y
+		sta	filename,x
+		beq	end
+
+		cmp	#' '
+		beq	eos
+
+		; /!\ Attention: autorise plusiurs '.'
+		; 46
+		cmp	#'.'
+		beq	loop
+
+		; 47
+		cmp	#'/'
+		bne	alphanum
+
+		; Mode filepath?
+		bvc	loop
+		bvs	error2
+
+	alphanum:
+		cmp	#'0'
+		bcc	error
+
+		cmp	#'9'+1
+		bcc	loop
+
+		and	#$DF
+
+		; Si on veut conserver les minuscules
+		bvs	keep_minuscules
+		sta	filename,x
+
+	keep_minuscules:
+		cmp	#'A'
+		bcc	error
+
+		cmp	#'Z'+1
+		bcc	loop
+
+	error:
+		; Accepte uniquement ' ' comme délimiteur?
+		clc
+		bit	lex_strict
+		bpl	eos
+
+	error2:
+		sec
+		rts
+
+	eos:
+		lda	#$00
+		sta	filename,x
+	end:
+		; Retourne une erreur si X=0
+		cpx	#$01
+		ror
+		eor	#$80
+		rol
+
+		rts
+.endproc
+.endif
