@@ -95,7 +95,7 @@ HAS_ON_ERROR = 1
 	OP_EQ = 4	; "="
 	OP_LE = 5	; "<="
 	OP_GE = 6	; ">="
-
+	OP_IN = 7	; "$"
 
 	; --------------------------------------------------------------
 	;				Préfixes
@@ -139,26 +139,58 @@ HAS_ON_ERROR = 1
 	.ifndef SUBMIT
 	; [ dBase
 		.define PROMPT "dBase II>"
-		; REM_CHR = '*'
-		REM_CHR = ';'
+		REM_CHR = '*'
+		; REM_CHR = ';'
 
 		EXT_STRERR = 1
 
 		TOKEN_PRINT = 10
 		TOKEN_PRINT_NOCR = 11
 
-		TOKEN_TYPE = 22
+		TOKEN_TYPE = 24
 
-		TOKEN_PROCEDURE = 23
+		TOKEN_PROCEDURE = 22
+
+		; LOOP doit être supérieur à WEND
+		TOKEN_WEND = 35
+		TOKEN_LOOP = 36
+
+		;.importzp TOKEN_PRINT
+		;.importzp TOKEN_PRINT_NOCR
+		;.importzp TOKEN_PROCEDURE
+		;.importzp TOKEN_TYPE
+		;.importzp TOKEN_WEND
+		;.importzp TOKEN_LOOP
 
 		; [ Pour tests
 		LABEL_CHR = ':'
 		; ]
 
 		; Ajout perso
-		TOKEN_PEEK = 8
+		TOKEN_PEEK = 9
+
+		OPT_CENTURY = 0
+		OPT_DELETED = 1
+		OPT_EXACT = 2
+		OPT_HEADINGS = 3
+		OPT_STATUS = 4
+		OPT_CURSOR = 5
+		OPT_DBASERR = 6
+
+		_OPT_ON_OFF_TO_ = 6
+		OPT_FIELDS = 7
+
+		_OPT_TO_ = 8
+		OPT_FILTER = 8
+		OPT_MESSAGE = 9
+
+		_OPT_EXPR_ = 10
+		OPT_DATE = 10
+
+		FKMAX = 9
 
 		DEBUG = 1
+
 	; ]
 	.else
 	; [ submit
@@ -182,5 +214,5 @@ HAS_ON_ERROR = 1
 	; --------------------------------------------------------------
 	;
 	; --------------------------------------------------------------
-	INIFILE_INC = 1
+	DBASE_INC = 1
 .endif

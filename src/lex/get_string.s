@@ -122,32 +122,33 @@
 		; bne	no_delim
 		; ]
 
+	.ifdef SUBMIT
 		; Si délimiteurs '"' et "'"
 		cmp	#'"'
 		beq	set_delim
 
 		cmp	#"'"
 		bne	no_delim
-
+	.else
 		; Si délimiteurs dBase '"', "'" et '[' ']'
 		; [
-		; cmp	#'"'
-		; beq	set_delim
+		cmp	#'"'
+		beq	set_delim
 		;
-		; cmp	#"'"
-		; beq	set_delim
+		cmp	#"'"
+		beq	set_delim
 		;
-		; cmp	#'['
-		; bne	no_delim
+		cmp	#'['
+		bne	no_delim
 		;
-		; lda	#']'
+		lda	#']'
 		; ]
+	.endif
 
 	set_delim:
 		sta	lex_delim
-		; iny
-		; bne	loop
-		beq	loop
+		; beq	loop
+		bcs	loop
 
 	no_delim:
 		bit	lex_strict

@@ -7,14 +7,16 @@ BUILD_PATH = ../build
 OBJ_PATH = $(BUILD_PATH)/obj
 BIN_PATH = $(BUILD_PATH)/bin
 LIB_PATH = $(BUILD_PATH)/lib
-# LD65_CFG = ../cfg/orix.cfg
+LIB_EXT_PATH = ../lib
+LD65_CFG = ../cfg/dbase2.cfg
 
 KERNEL_PATH = ../../orix-software/
 SHELL_PATH = ../../orix-software/
 SDK_PATH = ../../orix-sdk/
 SDK_LIB_PATH = $(SDK_PATH)/build/lib
 
-LIBS = $(SDK_LIB_PATH)/orix-sdk.lib ../lib/readline.lib
+LIBS = $(SDK_LIB_PATH)/orix-sdk.lib $(LIB_EXT_PATH)/readline.lib $(LIB_EXT_PATH)/dbf.lib $(LIB_EXT_PATH)/fns.lib $(SDK_LIB_PATH)/orix-sdk.lib
+# LIBS = $(SDK_LIB_PATH)/orix-sdk.lib $(LIB_EXT_PATH)/readline.lib
 
 START_ADDR ?= 0x0900
 
@@ -60,11 +62,11 @@ endif
 ifeq ($(DEBUG),yes)
 	#  ASFLAGS = -t $(TARGET) -I ../ -I . -I $(SDK_PATH)/macros -I $(SDK_PATH)/include -I $(SHELL_PATH) -I $(KERNEL_PATH) -D VERBOSE_LEVEL=$(VERBOSE) --auto-import --list-bytes 0 -l $(@:.o=.lst) --debug-info
 	ASFLAGS = -t $(TARGET) -I ../ -I . -I $(SDK_PATH)/macros -I $(SDK_PATH)/include -I $(SHELL_PATH) -I $(KERNEL_PATH) -D VERBOSE_LEVEL=$(VERBOSE) --list-bytes 0 -l $(@:.o=.lst) --debug-info -D $(PGM_MODE)
-	LDFLAGS = $(LD65_CFG)  -Ln $(@).ca.sym -m $(@).map --lib-path $(SDK_LIB_PATH) --lib-path $(LIB_PATH) --start-addr $(START_ADDR)
+	LDFLAGS = $(LD65_CFG)  -Ln $(@).ca.sym -m $(@).map --lib-path $(SDK_LIB_PATH) --lib-path $(LIB_PATH) --lib-path $(LIB_EXT_PATH) --start-addr $(START_ADDR)
 	# LDFLAGS = -C "$(LD65_CFG)"  -Ln $(BUILD_PATH)/$(PROJECT).ca.sym -m $(BUILD_PATH)/$(PROJECT).map --lib-path $(SDK_LIB_PATH)
 else
 	ASFLAGS = -t $(TARGET) -I ../ -I . -I $(SDK_PATH)/macros -I $(SDK_PATH)/include -I $(SHELL_PATH) -I $(KERNEL_PATH) -D VERBOSE_LEVEL=$(VERBOSE) --auto-import -D $(PGM_MODE)
-	LDFLAGS = $(LD65_CFG)  --lib-path $(SDK_LIB_PATH) --lib-path $(LIB_PATH) --start-addr $(START_ADDR)
+	LDFLAGS = $(LD65_CFG)  --lib-path $(SDK_LIB_PATH) --lib-path $(LIB_PATH) --lib-path $(LIB_EXT_PATH) --start-addr $(START_ADDR)
 	# LDFLAGS = -C "$(LD65_CFG)"  --lib-path $(SDK_LIB_PATH)
 endif
 
@@ -123,9 +125,9 @@ $(OBJ_PATH)/%.o: %.s
 	@$(AS) $(ASFLAGS) $(CREATE_DEP) -o $@ $<
 
 
-$(BIN_PATH)/$(PROJECT): $(OBJS) $(LIBS) $(LIB_PATH)/cmnds.lib $(LIB_PATH)/fns.lib $(LIB_PATH)/lex.lib $(LIB_PATH)/utils.lib $(LIB_PATH)/cmnds.lib
+$(BIN_PATH)/$(PROJECT): $(OBJS) $(LIB_PATH)/cmnds.lib $(LIB_PATH)/fns.lib $(LIB_PATH)/lex.lib $(LIB_PATH)/utils.lib $(LIB_PATH)/cmnds.lib $(LIBS)
 	@echo -e "\nCreate $(PROJECT) (start address = $(START_ADDR))"
-	@$(LD) $(LDFLAGS) -o $@ $+ $(TARGET).lib
+	$(LD) $(LDFLAGS) -o $@ $+ $(TARGET).lib
 ifeq ($(DEBUG),yes)
 	@echo "Create $(PROJECT).sym"
 	@sed -re 's/al 00(.{4}) \.(.+)$$/\1 \2/' $(BIN_PATH)/$(PROJECT).ca.sym | sort | uniq > $(BIN_PATH)/$(PROJECT).sym

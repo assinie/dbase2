@@ -22,7 +22,7 @@
 ;----------------------------------------------------------------------
 ;				imports
 ;----------------------------------------------------------------------
-.import fp
+.import main_fp
 .importzp line_ptr
 .import submit_line
 
@@ -33,9 +33,10 @@
 .import affectation
 .import fgets
 
-.import push
-.import pop
+.import file_push
+.import file_pop
 .import buffer_reset
+.import file_noreopen
 
 .import cmnd_clear
 
@@ -101,20 +102,24 @@ OPT_MEMORY = $03
 .proc cmnd_restore
 		sty	save_y
 
+		; Indique cmnd_restore en cours pour file_reopen dans fgets
+		; (file_noreopen non nul)
+		sty	file_noreopen
+
 		jsr	buffer_reset
-		jsr	push
+		jsr	file_push
 		bcs	error
 
-	.ifndef SUBMIT
-		; Option ADDITIVE?
-		lda	opt_num
-		bpl	restore
+	;.ifndef SUBMIT
+	;	; Option ADDITIVE?
+	;	lda	opt_num
+	;	bpl	restore
 
 		; Non, on efface toute les variables
-		lda	#OPT_MEMORY
-		sta	opt_num
-		jsr	cmnd_clear
-	.endif
+	;	lda	#OPT_MEMORY
+	;	sta	opt_num
+	;	jsr	cmnd_clear
+	;.endif
 
 	restore:
 		; Vérifier que <string> est un nom de fichier valide
@@ -123,12 +128,25 @@ OPT_MEMORY = $03
 ;		crlf
 
 		fopen	string, O_RDONLY
-		sta	fp
-		stx	fp+1
-		cmp	#$ff
-		bne	getline
-		cpx	#$ff
+		sta	main_fp
+		stx	main_fp+1
+	;	cmp	#$ff
+	;	bne	getline
+	;	cpx	#$ff
+	;	beq	error1
+		eor	main_fp+1
 		beq	error1
+
+	.ifndef SUBMIT
+		; Option ADDITIVE?
+		lda	opt_num
+		bpl	getline
+
+		; Non, on efface toutes les variables
+		lda	#OPT_MEMORY
+		sta	opt_num
+		jsr	cmnd_clear
+	.endif
 
 	getline:
 		lda	line_ptr
@@ -186,29 +204,38 @@ OPT_MEMORY = $03
 		; 10 Syntax error.
 		sty	save_y
 
-		fclose	(fp)
+		fclose	(main_fp)
 
-		jsr	pop
+		jsr	file_pop
 
 		lda	#10
-		ldy	save_y
-		sec
-		rts
+	;	ldy	save_y
+	;	sec
+	;	rts
+		jmp	error
 
 	end:
-		fclose	(fp)
-		jsr	pop
+		; Signale la fin de cmnd_restore pour submit_reopend ans fgets
+		lda	#$00
+		sta	file_noreopen
+
+		fclose	(main_fp)
+		jsr	file_pop
 		; clc
 		rts
 
 	error1:
-		jsr	pop
+		jsr	file_pop
 
 		; 1 File does not exist.
 		; 29 File is not accessible.
 		lda	#01
 
 	error:
+		; Signale la fin de cmnd_restore pour submit_reopend ans fgets
+		ldy	#$00
+		sty	file_noreopen
+
 		ldy	save_y
 		sec
 		rts

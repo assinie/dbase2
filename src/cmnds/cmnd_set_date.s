@@ -22,7 +22,14 @@
 ;----------------------------------------------------------------------
 ;				imports
 ;----------------------------------------------------------------------
+.import opt_date_fmt
 .import opt_num
+
+; From lex
+.import lex_save_y
+
+; From utils
+.import _find_cmnd
 
 ;----------------------------------------------------------------------
 ;				exports
@@ -88,6 +95,15 @@
 ;	-
 ;----------------------------------------------------------------------
 .proc cmnd_set_date
+		sty	lex_save_y
+		ldx	lex_save_y
+		lda	#<opt_date_fmt
+		ldy	#>opt_date_fmt
+		jsr	_find_cmnd
+		bcs	error10
+
+		sta	opt_num
+
 		; AMERICAM	=> $2f + $00
 		; ANSI		=> $2e + $40
 		; BRITISH	=> $2f + $80
@@ -103,6 +119,12 @@
 		sta	date_fmt
 
 		clc
+		rts
+
+	error10:
+		; 10 Syntax error.
+		lda	#10
+		ldy	lex_save_y
 		rts
 .endproc
 

@@ -19,7 +19,7 @@
 ;----------------------------------------------------------------------
 ;				Imports
 ;----------------------------------------------------------------------
-.import fpos
+.import file_fpos
 
 ;----------------------------------------------------------------------
 ;				Exports
@@ -46,16 +46,16 @@
 		lda	#CH376_BYTE_LOCATE
 		sta	CH376_COMMAND
 
-		lda	fpos
+		lda	file_fpos
 		sta	CH376_DATA
 
-		lda	fpos+1
+		lda	file_fpos+1
 		sta	CH376_DATA
 
-		lda	fpos+2
+		lda	file_fpos+2
 		sta	CH376_DATA
 
-		lda	fpos+3
+		lda	file_fpos+3
 		sta	CH376_DATA
 
 		jsr	WaitResponse

@@ -82,14 +82,23 @@
 ; at(<expC>, <expC>)
 ;
 ; Entrée:
-;
+;	-
 ; Sortie:
+;	- A: modifié
+;	- X: modifié
+;	- Y: inchangé
+;	- C: 0
 ;
 ; Variables:
 ;	Modifiées:
-;		-
+;		- param_type
+;		- pfac
+;		- fns_ptr
+;		- fns_save_a
+;		- fns_save_y
 ;	Utilisées:
-;		-
+;		- param1
+;		- string
 ; Sous-routines:
 ;	-
 ;----------------------------------------------------------------------
@@ -134,10 +143,10 @@
 		beq	ok
 		bcs	end
 
-		; Ici: A=len(sous-chaine), fns_ptr+1=len(chaine)
-		stx	fns_ptr
+;;		; Ici: A=len(sous-chaine), fns_ptr+1=len(chaine)
 
 	ok:
+		stx	fns_ptr
 		;lda	#$00
 		;sta	index
 		;lda	slen

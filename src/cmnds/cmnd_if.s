@@ -23,6 +23,7 @@
 ;				imports
 ;----------------------------------------------------------------------
 ; From cond_expr.s
+.import cond_value
 .import cond_expr
 
 ; From scan.s
@@ -98,9 +99,13 @@
 		bcs	error43
 		; ]
 
-		jsr	cond_expr
-		bcs	error
-
+		; [
+		; jsr	cond_expr
+		; bcs	error
+		; ]
+		; [
+		lda	cond_value
+		; ]
 		bne	true
 
 	false:

@@ -24,6 +24,7 @@
 ;----------------------------------------------------------------------
 ; From fgets.s
 .import fpos_text
+.import fpos_prev
 .import linenum
 .import fgets
 .import buffer_reset
@@ -49,8 +50,8 @@
 .import skip_spaces
 
 ; From file.s
-.import fpos
-.import empty_stack
+.import file_fpos
+.import file_empty_stack
 
 ; From fseek.s
 .import fseek
@@ -63,6 +64,8 @@
 .export push_if
 .export pop_else
 .export pop_endif
+.export flow_loop
+.export flow_exit
 
 .export flow_stack
 
@@ -70,14 +73,17 @@
 ;			Defines / Constantes
 ;----------------------------------------------------------------------
 typedef .struct if_item
-	unsigned short if_line
-	unsigned short else_line
-	unsigned long else_offset
-	unsigned short endif_line
-	unsigned long endif_offset
+	unsigned short if_line			; 2
+	unsigned long if_offset			; 4
+	unsigned short else_line		; 2
+	unsigned long else_offset		; 4
+	unsigned short endif_line		; 2
+	unsigned long endif_offset		; 4
+	unsigned char token			; 1
+	unsigned char dummy			; 1
 .endstruct
 
-.define IF_MAX 10
+.define IF_MAX 12
 
 ;----------------------------------------------------------------------
 ;				Page Zéro
@@ -96,8 +102,8 @@ typedef .struct if_item
 			string80	"IF"
 			string80	"ELSE"
 			string80	"ENDIF"
-;			string80	"WHILE"		; "DO WHILE"
-;			string80	"WEND"		; "LOOP"
+			string80	"WHILE"		; "DO WHILE"
+			string80	"WEND"		; "LOOP"
 ;			string80	"REPEAT"	; "DO"
 ;			string80	"UNTIL"		; "LOOP WHILE"
 			string80	"TEXT"
@@ -107,8 +113,12 @@ typedef .struct if_item
 		TOKEN_IF = 0
 		TOKEN_ELSE = 1
 		TOKEN_ENDIF = 2
-		TOKEN_TEXT = 3
-		TOKEN_ENDTEXT = 4
+		TOKEN_WHILE = 3
+		TOKEN_WEND2 = 4
+		TOKEN_REPEAT = 5
+		TOKEN_UNTIL = 6
+		TOKEN_TEXT = 7
+		TOKEN_ENDTEXT = 8
 
 	.segment "DATA"
 		; Table des blocs
@@ -259,11 +269,19 @@ typedef .struct if_item
 		jcs	error10
 
 	if:
+		; Sauvegarde le token pour plus tard
+		tax
+
 		cmp	#TOKEN_IF
+		beq	if1
+
+		cmp	#TOKEN_WHILE
 		bne	else
 
+	if1:
 		inc	flow_stack
 		ldy	flow_stack
+		; Trop de blocs imbriqués?
 		cpy	#IF_MAX
 		jeq	error_overflow
 
@@ -277,16 +295,41 @@ typedef .struct if_item
 		lda	if_ptr
 		adc	#.sizeof(if_item)
 		sta	if_ptr
+		cmp	#(IF_MAX * .sizeof(if_item))
+		bcs	error_overflow
 
 		; Conserve le pointeur dans la pile
 		sta	if_stack,y
 
+	; [ original sans while/wend
 		; On ne conserve que le numéro de ligne pour servir de clé
 		tay
 		lda	linenum
-		sta	if_table,y
+		sta	if_table+if_item::if_line,y
 		lda	linenum+1
-		sta	if_table+1,y
+		sta	if_table+if_item::if_line+1,y
+	; ]
+	; [ Ajout
+		txa
+		sta	if_table+if_item::token,y
+
+		; Sauvegarde l'offset de la ligne suivante
+		; Corection fpos_prev-1, à voir pourquoi il faut le faire
+		; (cf fgets)
+		sec
+		lda	fpos_prev
+		sbc	#$01
+		sta	if_table+if_item::if_offset,y
+		lda	fpos_prev+1
+		sbc	#$00
+		sta	if_table+if_item::if_offset+1,y
+		lda	fpos_prev+2
+		sbc	#$00
+		sta	if_table+if_item::if_offset+2,y
+		lda	fpos_prev+3
+		sbc	#$00
+		sta	if_table+if_item::if_offset+3,y
+	; ]
 
 ;		lda	#$ff
 ;		sta	if_flag
@@ -302,6 +345,7 @@ typedef .struct if_item
 
 		lda	if_stack_syntax,y
 		bne	error_unexpected_else
+
 		lda	#$01
 		sta	if_stack_syntax,y
 
@@ -312,8 +356,12 @@ typedef .struct if_item
 
 	endif:
 		cmp	#TOKEN_ENDIF
+		beq	endif1
+
+		cmp	#TOKEN_WEND2
 		jne	loop
 
+	endif1:
 		; Underflow
 		ldy	flow_stack
 		beq	error_unexpected_endif
@@ -337,15 +385,13 @@ typedef .struct if_item
 ;		sta	if_flag
 		jmp	loop
 
-
+	error_overflow:
+		prints	"\rtoo many IF/ENDIF line "
+		jmp	exit_err
 
 	error_label:
 		crlf
 		prints	"\rlabel table full"
-		jmp	exit_err
-
-	error_overflow:
-		prints	"\rtoo many IF/ENDIF line "
 		jmp	exit_err
 
 	error_unexpected_else:
@@ -382,12 +428,24 @@ typedef .struct if_item
 		tay
 		lda	if_stack,y
 		tay
-		lda	if_table,y
+		lda	if_table+if_item::if_line,y
 		sta	linenum
-		lda	if_table+1,y
+		lda	if_table+if_item::if_line+1,y
 		sta	linenum+1
+		lda	if_table+if_item::token,y
+		pha
 		jsr	print_linenum
+		pla
+		cmp	#TOKEN_IF
+		bne	while_err
+
 		prints	": IF without ENDIF\r\n"
+		jmp	err_next
+
+	while_err:
+		prints	": DO WHILE without ENDDO\r\n"
+
+	err_next:
 		dec	flow_stack
 		bne	end
 		beq	error10
@@ -403,7 +461,7 @@ typedef .struct if_item
 		jsr	buffer_reset
 
 		; Initialise stack_ptr = 0
-		jsr	empty_stack
+		jsr	file_empty_stack
 
 		; Numéro de ligne du fichier batch
 		lda	#$00
@@ -419,11 +477,13 @@ typedef .struct if_item
 		; Rewind
 		ldy	#$03
 	rewind_loop:
-		sta	fpos,y
+		sta	file_fpos,y
 		sta	fpos_text,y
 		dey
 		bpl	rewind_loop
-		jsr	fseek
+
+		; Pas de fseek (le fichier est fermé)
+		; jsr	fseek
 
 ;	error:
 		clc
@@ -436,14 +496,20 @@ typedef .struct if_item
 ;----------------------------------------------------------------------
 ;
 ; Entrée:
-;
+;	- A: offset dans if_item
 ; Sortie:
+;	- A: modifié
+;	- X: inchangé
+;	- Y: inchangé
 ;
 ; Variables:
 ;	Modifiées:
-;		-
+;		- if_table
 ;	Utilisées:
-;		-
+;		- if_stack
+;		- linenum
+;		- fpos
+;
 ; Sous-routines:
 ;	-
 ;----------------------------------------------------------------------
@@ -562,7 +628,7 @@ typedef .struct if_item
 ; Sortie:
 ;	A,Y: Modifiés
 ;	X  : Inchangé
-;
+;	V: forcé à 0
 ; Variables:
 ;	Modifiées:
 ;		-
@@ -570,6 +636,9 @@ typedef .struct if_item
 ;		-
 ; Sous-routines:
 ;	-
+;----------------------------------------------------------------------
+; /!\ ATTENTION: modification du flag V par ADC
+;                on force V=0 en sortie
 ;----------------------------------------------------------------------
 .proc push_if
 		; TODO: Vérifier que la ligne n'est pas déjà au sommet
@@ -607,6 +676,7 @@ typedef .struct if_item
 		cmp	linenum+1
 		beq	found
 	next:
+		; /!\ ATTENTION: modification possible du flag V par ADC
 		clc
 		tya
 		adc	#.sizeof(if_item)
@@ -630,11 +700,15 @@ typedef .struct if_item
 		sta	if_stack,y
 
 	end:
+		; /!\ Force V=0, nécessaire
+		clv
+
 		clc
 		lda	#EOK
 		rts
 
 	err_ovf:
+		; 103: DOs nested too deep.
 		lda	#ENOMEM
 		rts
 .endproc
@@ -671,16 +745,16 @@ typedef .struct if_item
 
 		; Offset du bloc else
 		lda	if_table+if_item::else_offset,y
-		sta	fpos
+		sta	file_fpos
 		sta	fpos_text
 		lda	if_table+if_item::else_offset+1,y
-		sta	fpos+1
+		sta	file_fpos+1
 		sta	fpos_text+1
 		lda	if_table+if_item::else_offset+2,y
-		sta	fpos+2
+		sta	file_fpos+2
 		sta	fpos_text+2
 		lda	if_table+if_item::else_offset+3,y
-		sta	fpos+3
+		sta	file_fpos+3
 		sta	fpos_text+3
 
 		jsr	buffer_reset
@@ -714,24 +788,24 @@ typedef .struct if_item
 		lda	if_stack,y
 		tay
 
-		; Numéro de ligne du bloc else
+		; Numéro de ligne du bloc endif
 		lda	if_table+if_item::endif_line,y
 		sta	linenum
 		lda	if_table+if_item::endif_line+1,y
 		sta	linenum+1
 
-		; Offset du bloc else
+		; Offset du bloc endif
 		lda	if_table+if_item::endif_offset,y
-		sta	fpos
+		sta	file_fpos
 		sta	fpos_text
 		lda	if_table+if_item::endif_offset+1,y
-		sta	fpos+1
+		sta	file_fpos+1
 		sta	fpos_text+1
 		lda	if_table+if_item::endif_offset+2,y
-		sta	fpos+2
+		sta	file_fpos+2
 		sta	fpos_text+2
 		lda	if_table+if_item::endif_offset+3,y
-		sta	fpos+3
+		sta	file_fpos+3
 		sta	fpos_text+3
 
 		dec	flow_stack
@@ -742,6 +816,134 @@ typedef .struct if_item
 
 	err_empty:
 		sec
+		lda	#ERANGE
+		rts
+.endproc
+
+;----------------------------------------------------------------------
+;
+; Entrée:
+;	C: 0-> WEND, 1-> LOOP (on cherche le WHILE le plus récent)
+;
+; Sortie:
+;
+; Variables:
+;	Modifiées:
+;		-
+;	Utilisées:
+;		-
+; Sous-routines:
+;	-
+;----------------------------------------------------------------------
+.proc flow_loop
+		ldy	flow_stack
+		beq	err_empty
+
+	unstack:
+		lda	if_stack,y
+		tay
+
+		bcc	loop
+
+		lda	if_table+if_item::token,y
+		cmp	#TOKEN_WHILE
+		beq	loop
+
+		dec	flow_stack
+		sec
+		beq	err_noWhile
+
+		ldy	flow_stack
+		bcs	unstack
+
+	loop:
+		; Numéro de ligne du bloc if
+		; -1 parce que fgets va incrémenter linenum
+		sec
+		lda	if_table+if_item::if_line,y
+		sbc	#$01
+		sta	linenum
+		lda	if_table+if_item::if_line+1,y
+		sbc	#$00
+		sta	linenum+1
+
+		; Offset du bloc if
+		lda	if_table+if_item::if_offset,y
+		sta	file_fpos
+		sta	fpos_text
+		lda	if_table+if_item::if_offset+1,y
+		sta	file_fpos+1
+		sta	fpos_text+1
+		lda	if_table+if_item::if_offset+2,y
+		sta	file_fpos+2
+		sta	fpos_text+2
+		lda	if_table+if_item::if_offset+3,y
+		sta	file_fpos+3
+		sta	fpos_text+3
+
+		dec	flow_stack
+
+		jsr	buffer_reset
+		clc
+		rts
+
+	err_empty:
+		lda	#ERANGE
+		sec
+		rts
+
+	err_noWhile:
+		; dBase III ne semble pas remonter d'erreur si on fait un LOOP en dehors d'une boucle
+		; mais stoppe le programme
+		lda	#ERANGE
+		rts
+.endproc
+
+;----------------------------------------------------------------------
+;
+; Entrée:
+;	C: 0-> WEND, 1-> LOOP (on cherche le WHILE le plus récent)
+;
+; Sortie:
+;
+; Variables:
+;	Modifiées:
+;		-
+;	Utilisées:
+;		-
+; Sous-routines:
+;	-
+;----------------------------------------------------------------------
+.proc flow_exit
+		ldy	flow_stack
+		beq	err_empty
+
+	unstack:
+		lda	if_stack,y
+		tay
+
+		lda	if_table+if_item::token,y
+		cmp	#TOKEN_WHILE
+		beq	exit
+
+		dec	flow_stack
+		sec
+		beq	err_noWhile
+
+		ldy	flow_stack
+		bcs	unstack
+
+	exit:
+		jmp	pop_endif
+
+	err_empty:
+		lda	#ERANGE
+		sec
+		rts
+
+	err_noWhile:
+		; dBase III ne semble pas remonter d'erreur si on fait un LOOP en dehors d'une boucle
+		; mais stoppe le programme
 		lda	#ERANGE
 		rts
 .endproc

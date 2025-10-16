@@ -20,10 +20,14 @@
 ;----------------------------------------------------------------------
 ;				imports
 ;----------------------------------------------------------------------
-.import fp
+.import main_fp
 
 ; From debug
 .import PrintHexByte
+
+; From file
+.import file_reopen
+.import file_close
 
 ;----------------------------------------------------------------------
 ;				exports
@@ -34,10 +38,6 @@
 .export linenum
 
 .export fpos_text
-
-; From file
-.import reopen
-.import close
 
 ; compatibilité submit
 .export fpos_prev
@@ -68,6 +68,10 @@ TEXTFILE = 1
 		unsigned short max_line_size
 
 		.if ::TEXTFILE
+			unsigned char buffer_pos
+			unsigned char buffer_size
+			unsigned char buffer[256]
+
 			unsigned long fpos_text
 
 			; compatibilité submit
@@ -140,7 +144,7 @@ TEXTFILE = 1
 			jmp	skip
 
 		loop:
-			; fread	(address), #1, 1, fp
+			; fread	(address), #1, 1, main_fp
 			; cmp	#$01
 			; bne	eof
 			jsr	fgetc
@@ -260,15 +264,15 @@ TEXTFILE = 1
 			; /!\ ATTENTION: cmnd_restore appelle aussi fgets mais
 			;     ouvre un autre fichier que le script en cours.
 			;     Il faut modifier reopen pour ouvrir le bon fichier.
-			jsr	reopen
+			jsr	file_reopen
 			bcs	open_error
-			fread	buffer, #$fe, 1, fp
+			fread	buffer, #$fe, 1, main_fp
 			; cmp	#$fe
 			; bne	eof
 
 			sta	buffer_size
 
-			jsr	close
+			jsr	file_close
 
 			ldx	#$00
 			stx	buffer_pos
@@ -280,9 +284,9 @@ TEXTFILE = 1
 		; eof:
 			; rts
 
-		buffer_pos: .byte	$00
-		buffer_size: .byte	$00
-		buffer: .res	256;0
+		; buffer_pos: .byte	$00
+		; buffer_size: .byte	$00
+		; buffer: .res	256;0
 
 	.endproc
 
@@ -303,8 +307,10 @@ TEXTFILE = 1
 	;----------------------------------------------------------------------
 	.proc buffer_reset
 			lda	#$00
-			sta	fgetc::buffer_pos
-			sta	fgetc::buffer_size
+			;sta	fgetc::buffer_pos
+			;sta	fgetc::buffer_size
+			sta	buffer_pos
+			sta	buffer_size
 
 ;			sta	fpos_text
 ;			sta	fpos_text+1
@@ -336,7 +342,7 @@ TEXTFILE = 1
 			; plp
 
 		loop:
-			fread	(address), #2, 1, fp
+			fread	(address), #2, 1, main_fp
 			cmp	#$02
 			bne	eof
 
@@ -360,7 +366,7 @@ TEXTFILE = 1
 			sta	max_line_size+1
 
 			; Lit la ligne
-			fread	(address), (max_line_size), 1, fp
+			fread	(address), (max_line_size), 1, main_fp
 			cmp	max_line_size
 			bne	eof
 			cpx	max_line_size+1
@@ -427,4 +433,41 @@ TEXTFILE = 1
 			; Compatibilité avec mode TEXTE
 			rts
 	.endproc
+.endif
+
+.if 0
+;--------
+;
+;
+;
+;-------- base
+
+	unsigned long new_fpos
+
+.proc fseek
+		lda	fgetc::buffer_size
+		beq	recharger
+
+		sec
+		lda	new_fpos
+		sbc	base
+		tax
+
+		lda	new_fpos+1
+		sbc	base+1
+		bne	recharger
+
+		lda	new_fpos+2
+		sbc	base+2
+		bne	recharger
+
+		lda	new_fpos+3
+		sbc	base+3
+		bne	recharger
+		bcc	recharger
+
+		; X = offset dans le tampon
+		stx	fgetc::buffer_pos
+		rts
+.endproc
 .endif

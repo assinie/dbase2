@@ -21,10 +21,17 @@
 ;----------------------------------------------------------------------
 ;			Defines / Constantes
 ;----------------------------------------------------------------------
+; 0: pas de limite de taille
+; 1: limite à 256 caractères maxi
+;LOOKUP_TABLE_PAGE = 0
 
 ;----------------------------------------------------------------------
 ;				imports
 ;----------------------------------------------------------------------
+;.import __INSTTBL_RUN__
+;.import __INSTJMP_RUN__
+;.import __INSTYACC_RUN__
+
 	; --------------------------------------------------------------
 	;			Fonctions LEX
 	; --------------------------------------------------------------
@@ -53,6 +60,7 @@
 .import get_expr_logic
 .import get_term
 .import get_term_num
+.import get_term_num_opt
 .import get_term_str
 .import get_expr_date
 .import get_filename
@@ -78,11 +86,12 @@
 .import cmnd_print
 .import cmnd_restore
 .import cmnd_save
-.import cmnd_iif
+.import cmnd_iif				; SUBMIT
 .import cmnd_if
 .import cmnd_else
 .import cmnd_endif
-.import cmnd_set_date
+.import cmnd_set_date				; TEMPORAIRE
+.import cmnd_set_fields				; TEMPORAIRE (dBase III)
 .import cmnd_run
 .import cmnd_at
 .import cmnd_dump
@@ -171,7 +180,7 @@
 .import cmnd_import
 .import cmnd_index
 .import cmnd_label
-.import cmnd_list
+.import cmnd_list				;
 .import cmnd_locate
 .import cmnd_modify				; Ok MODIFY (FILE | COMMAND) <filename>
 .import cmnd_pack
@@ -191,7 +200,7 @@
 .import cmnd_sum
 .import cmnd_total
 .import cmnd_type				; Ok
-.import cmnd_use
+.import cmnd_use				; Ne prend pas en compte l'option INDEX
 
 	; --------------------------------------------------------------
 	;			Commandes avancées
@@ -217,6 +226,7 @@
 .import cmnd_load
 .import cmnd_list_cmds
 .import cmnd_loop
+.import cmnd_wend				; ENDDO
 .import cmnd_macro
 .import cmnd_modify_cmds			; MODIFY (FILE | COMMAND) <filename>
 .import cmnd_note				; Ok
@@ -320,16 +330,30 @@
 	;		Fonctions de base de données
 	; --------------------------------------------------------------
 .import fn_bof
+.import fn_dbf_bof
 .import fn_dbf
+.import fn_dbf_dbf
 .import fn_deleted
+.import fn_dbf_deleted
 .import fn_eof
+.import fn_dbf_eof
 .import fn_field
+.import fn_dbf_field
 .import fn_found
 .import fn_lupdate
+.import fn_dbf_lupdate
 .import fn_ndx
 .import fn_reccount
+.import fn_dbf_reccount
 .import fn_recno
+.import fn_dbf_recno
 .import fn_recsize
+.import fn_dbf_recsize
+
+	; --------------------------------------------------------------
+	;			Fonctions autres
+	; --------------------------------------------------------------
+.import fn_iif
 
 ;----------------------------------------------------------------------
 ;				exports
@@ -346,6 +370,7 @@
 .export func_yacc_tbl
 
 .export cmp_oper
+.export logic_oper
 .export osenv
 .export os_default
 .export uname
@@ -356,7 +381,7 @@
 ;			Chaines statiques
 ;----------------------------------------------------------------------
 .pushseg
-	.segment "RODATA"
+	.segment "LEXJMP"
 		; --------------------------------------------------------------
 		;			Tokens Lexicaux
 		; --------------------------------------------------------------
@@ -375,7 +400,7 @@
 			.addr	get_literal
 
 ;			.addr	get_param
-;			.addr	get_ident_opt
+			.addr	get_ident_opt
 ;			.addr	get_param_num
 ;			.addr	get_param_str
 
@@ -393,7 +418,8 @@
 			.addr	get_expr_logic
 
 			.addr	get_term
-;			.addr	get_term_num
+			.addr	get_term_num
+			.addr	get_term_num_opt
 ;			.addr	get_term_str
 
 			.addr	get_filename
@@ -420,7 +446,7 @@
 			LITERAL
 
 ;			PARAM
-;			IDENTZ
+			IDENTZ
 ;			PARAM_N
 ;			PARAM_S
 
@@ -439,7 +465,8 @@
 			EXPR_L
 
 			TERM
-;			TERM_N
+			TERM_N
+			TERM_NZ
 ;			TERM_C
 
 			FILENAME

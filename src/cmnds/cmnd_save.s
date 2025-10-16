@@ -48,12 +48,12 @@
 .import skip_spaces
 
 .import fputs
-.import fp
+.import main_fp
 
-.import push
-.import pop
+.import file_push
+.import file_pop
 
-.import filter
+.import pattern_filter
 
 ;----------------------------------------------------------------------
 ;				exports
@@ -119,7 +119,7 @@
 		sty	save_y
 		stx	save_x
 
-		jsr	push
+		jsr	file_push
 		bcs	error
 
 		; Vérifier que <string> est un nom de fichier valide
@@ -128,8 +128,8 @@
 ;		crlf
 
 		fopen	string, O_WRONLY | O_CREAT
-		sta	fp
-		stx	fp+1
+		sta	main_fp
+		stx	main_fp+1
 		cmp	#$ff
 		bne	set_filter
 
@@ -193,9 +193,9 @@
 
 		jsr	var_list
 		; TODO: tester un éventuel code erreur
-		fclose	(fp)
+		fclose	(main_fp)
 
-		jsr	pop
+		jsr	file_pop
 
 		clc
 		rts
@@ -216,7 +216,7 @@
 		lda	#72
 
 		pha
-		jsr	pop
+		jsr	file_pop
 		pla
 		clv
 
@@ -259,7 +259,7 @@
 		lda	opt_num
 		bmi	save
 
-		jsr	filter			; C=0 -> Ok, C=1 -> Ok
+		jsr	pattern_filter			; C=0 -> Ok, C=1 -> Ok
 
 		lda	opt_num
 		beq	all_like
@@ -293,7 +293,7 @@
 		adc	#$03
 
 		ldy	#$00
-		ldx	fp
+		ldx	main_fp
 		.byte	$00, XFWRITE
 
 		; ]

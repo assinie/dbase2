@@ -80,7 +80,7 @@
 		;.byte	$00, XVARS
 		;jsr	PrintRegs
 
-		ldx	#$03
+		ldx	#$06
 		.byte $00, XVARS
 
 		cpx	#$06

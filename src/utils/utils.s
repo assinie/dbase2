@@ -73,6 +73,7 @@
 ;		unsigned char save_a
 
 		unsigned char save_y
+		unsigned char len
 .popseg
 
 ;----------------------------------------------------------------------
@@ -165,6 +166,7 @@
 ; Sous-routines:
 ;	-
 ;----------------------------------------------------------------------
+.if 0
 .proc _find_cmnd
 		sta	ptr
 		sty	ptr+1
@@ -214,7 +216,10 @@
 				;]
 		.else
 				; [ sinon
-				inc	ptr
+				;inc	ptr
+				;bne	@skip
+				;inc	ptr+1
+				iny
 				bne	@skip
 				inc	ptr+1
 			@skip:
@@ -279,8 +284,11 @@
 				; ]
 		.else
 				; [ sinon
-				inc	ptr
-				bne	@skip
+				; inc	ptr
+				; bne	@skip
+				; inc	ptr+1
+				iny
+				bne	skip_string
 				inc	ptr+1
 			@skip:
 				; ]
@@ -299,9 +307,9 @@
 
 		; Ajout test pour les fonctions ex.: CHR(
 		; [
-		lda	submit_line-1,x
-		cmp	#'('
-		beq	ok
+	;	lda	submit_line-1,x
+	;	cmp	#'('
+	;	beq	ok
 		; ]
 
 		; Vérifie que le prochain caractère du buffer est bien un espace
@@ -310,8 +318,155 @@
 		; Ex: buffer: cata => commande trouvée = cat => pas bon
 		lda	submit_line,x
 		beq	ok
+		cmp	#'('
+		beq	ok
 		cmp	#' '
 		bne	next
+
+	ok:
+		lda	instnum
+		clc
+		rts
+.endproc
+.endif
+
+;----------------------------------------------------------------------
+;
+; Entrée:
+;	AY: Adresse de la table des commandes
+;	X: Offset de la commande dans submit_line
+;
+; Sortie:
+;	Commande trouvée:
+;		C: 0
+;		A: n° de la commande
+;		X: index vers la caractère suivant la commande
+;
+;	Commande inconnue:
+;		C: 1
+;		A: modifié
+;		X: inchangé
+;	Y: modifié
+;
+; Variables:
+;	Modifiées:
+;		-
+;	Utilisées:
+;		-
+; Sous-routines:
+;	-
+;----------------------------------------------------------------------
+.proc _find_cmnd
+		sta	ptr
+		sty	ptr+1
+
+	;	lda	ptr
+	;	bne	@dec_lsb
+		dec	ptr+1
+	;@dec_lsb:
+	;	dec	ptr
+
+		; X: position du premier caractère de la commande
+		; à trouver
+		lda	submit_line,x
+		beq	not_found
+
+		stx	save_x
+		ldy	#$ff
+		sty	instnum
+		; dey
+	coma:
+		lda	#$04
+		sta	len
+
+		inc	instnum
+
+		dex
+	coma1:
+		iny
+		bne	coma2
+		inc	ptr+1
+	coma2:
+
+		inx
+		lda	submit_line,x
+		cmp	#'a'
+		bcc	@compare
+		cmp	#'z'+1
+		bcs	@compare
+		sbc	#'a'-'A'-1
+
+	@compare:
+		cmp	(ptr),y
+		bne	comeos
+		dec	len
+		bne	coma1
+
+	comc:
+		inx
+		iny
+		bne	@next
+		inc	ptr+1
+	@next:
+		lda	submit_line,x
+		beq	comfou1
+		cmp	#'('
+		beq	comfou1
+		cmp	#' '
+		beq	comfou1
+
+		cmp	#'a'
+		bcc	@compare
+		cmp	#'z'+1
+		bcs	@compare
+		sbc	#'a'-'A'-1
+
+	@compare:
+		cmp	(ptr),y
+		beq	comc
+
+	comeos:
+		ora	#$80
+		cmp	(ptr),y
+		beq	comfou
+
+	comnex:
+		ldx	save_x
+		lda	(ptr),y
+		beq	not_found
+		bmi	coma
+		iny
+		bne	comnex
+		inc	ptr+1
+		bne	comnex
+
+	not_found:
+		sec
+		lda	#ENOENT
+		rts
+
+	comfou:
+		; Pointe vers le caractère suivant la commande
+		inx
+
+	comfou1:
+		; Ajout test pour les fonctions ex.: CHR(
+		; [
+	;	lda	submit_line-1,x
+	;	cmp	#'('
+	;	beq	ok
+		; ]
+
+		; Vérifie que le prochain caractère du buffer est bien un espace
+		; ou la fin de ligne.
+		; Dans le cas contraire on passe à la commande suivante.
+		; Ex: buffer: cata => commande trouvée = cat => pas bon
+		lda	submit_line,x
+		beq	ok
+		cmp	#'('
+		beq	ok
+		cmp	#' '
+		bne	comnex
 
 	ok:
 		lda	instnum

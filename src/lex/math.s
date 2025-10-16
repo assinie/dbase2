@@ -47,6 +47,13 @@
 .export multiply
 .export push_num
 .export pull_num
+.export math_get_sp
+
+; Pour dbf_goto
+.exportzp multiplicand
+.exportzp multiplier
+.exportzp result
+.export mult
 
 ;----------------------------------------------------------------------
 ;			Defines / Constantes
@@ -61,16 +68,19 @@ STACK_SIZE = ITEM_SIZE*10
 	.segment "ZEROPAGE"
 		unsigned long pfac
 		unsigned long sfac
-		unsigned long result[2]
+	;	unsigned long result[2]
+		unsigned long result_ext
+		unsigned short pztemp
 
 		multiplicand    = pfac		; 4 bytes
 		multiplier      = sfac		; 4 bytes
 		;result          = TR0		; 8 bytes   (note: shares memory with multiplier)
+		result		= sfac
 
-		dividend 	:= pfac
-		divisor 	:= sfac
-		remainder 	:= result	; remainder is in zero-page to gain some cycle/byte ($fb-$fd)
-		pztemp 	 	:= result+4
+		dividend 	:= pfac		; contiendra le résultat de la division
+		divisor		:= sfac
+		remainder 	:= result_ext	; remainder is in zero-page to gain some cycle/byte ($fb-$fd)
+		; pztemp 	 	:= result+4
 
 	.segment "DATA"
 		unsigned char stack[256]
@@ -204,6 +214,29 @@ STACK_SIZE = ITEM_SIZE*10
 
 ;----------------------------------------------------------------------
 ;
+; Entrée:
+;	-
+; Sortie:
+;	A: Modifié
+;	X: inchangé
+;	Y: Inchangé
+;	Z: fonction de sp
+;
+; Variables:
+;	Modifiées:
+;		-
+;	Utilisées:
+;		- sp
+; Sous-routines:
+;	-
+;----------------------------------------------------------------------
+.proc math_get_sp
+		lda	sp
+		rts
+.endproc
+
+;----------------------------------------------------------------------
+;
 ;----------------------------------------------------------------------
 
 ;----------------------------------------------------------------------
@@ -316,7 +349,7 @@ STACK_SIZE = ITEM_SIZE*10
 	overflow:
 		; Ici C=1
 		; Remonter une errur en cas de dépassement de valeur?
-		; 39: Numeric overlow (data wos lost).
+		; 39: Numeric overlow (data was lost).
 		lda	#39
 		rts
 
@@ -411,10 +444,12 @@ STACK_SIZE = ITEM_SIZE*10
 .proc multiply
 		sty	math_y
 
+		; Multiplier -> sfac
 		ldy	#$04
 		jsr	pull_num
 		bcs	error
 
+		; Multiplicand -> pfac
 		ldy	#$00
 		jsr	pull_num
 		bcs	error
@@ -619,6 +654,7 @@ STACK_SIZE = ITEM_SIZE*10
 		jsr	minus
 		inc	sign+1
 
+		; Divisor -> sfac
 	v1:
 		ldy	#$04
 		jsr	pull_num
@@ -630,6 +666,7 @@ STACK_SIZE = ITEM_SIZE*10
 		jsr	minus
 		inc	sign+1
 
+		; Dividend -> pfac
 	v2:
 		ldy	#$00
 		jsr	pull_num
@@ -671,8 +708,9 @@ STACK_SIZE = ITEM_SIZE*10
 ;	Modifiées:
 ;		- math_y
 ;		- pfac
+;		- sfac
 ;	Utilisées:
-;		- remainder
+;		- remainderc( result_ext)
 ; Sous-routines:
 ;	- pull_name
 ;	- div
@@ -681,10 +719,12 @@ STACK_SIZE = ITEM_SIZE*10
 .proc mod
 		sty	math_y
 
+		; Divisor -> sfac
 		ldy	#$04
 		jsr	pull_num
 		bcs	error
 
+		; Dividend -> pfac
 		ldy	#$00
 		jsr	pull_num
 		bcs	error
@@ -715,8 +755,8 @@ STACK_SIZE = ITEM_SIZE*10
 ; Division non signée
 ;
 ; Entrée:
-;	dividend
-;	divisor
+;	dividend (pfac)
+;	divisor (sfac)
 ;
 ; Sortie:
 ;	A: Modifié
@@ -727,8 +767,8 @@ STACK_SIZE = ITEM_SIZE*10
 ;
 ; Variables:
 ;	Modifiées:
-;		dividend
-;		divisor
+;		dividend (pfac)
+;		divisor (sfac)
 ;		remainder
 ;		pztemp
 ;	Utilisées:
@@ -891,7 +931,7 @@ STACK_SIZE = ITEM_SIZE*10
 ;	Modifiées:
 ;		- pfac
 ;		- sfac
-;		- result
+;		- result_ext
 ;
 ;	Utilisées:
 ;		- sp
@@ -905,7 +945,9 @@ STACK_SIZE = ITEM_SIZE*10
 
 		lda	stack+3,x
 		bpl	_sqr
-		lda	#$ff
+
+		; 61: SQRT() : Negative
+		lda	#61
 		sec
 		rts
 
@@ -941,7 +983,7 @@ STACK_SIZE = ITEM_SIZE*10
 		; Rem := sfac
 		; Root := stack,x
 		; Number := pfac
-		; Temp := result
+		; Temp := result_ext
 		lda	#$00			; clear A
 		sta	sfac			; clear remainder low byte
 		sta	sfac+1			; clear remainder high byte
@@ -965,32 +1007,32 @@ STACK_SIZE = ITEM_SIZE*10
 		rol	sfac+1			;
 
 		lda	stack,x			; copy Root ..
-		sta	result			; .. to templ
+		sta	result_ext		; .. to templ
 		lda	#$00			; clear byte
-		sta	result+1		; clear temp high byte
+		sta	result_ext+1		; clear temp high byte
 
 		sec				; +1
-		rol	result			; temp = temp * 2 + 1
-		rol	result+1		;
+		rol	result_ext		; temp = temp * 2 + 1
+		rol	result_ext+1		;
 
 		lda	sfac+1			; get remainder high byte
-		cmp	result+1		; comapre with partial high byte
+		cmp	result_ext+1		; comapre with partial high byte
 		bcc	next			; skip sub if remainder high byte smaller
 
 		bne	subtr			; do sub if <> (must be remainder>partial !)
 
 		lda	sfac			; get remainder low byte
-		cmp	result			; comapre with partial low byte
+		cmp	result_ext		; comapre with partial low byte
 		bcc	next			; skip sub if remainder low byte smaller
 
 						; else remainder>=partial so subtract then
 						; and add 1 to root. carry is always set here
 	subtr:
 		lda	sfac			; get remainder low byte
-		sbc	result			; subtract partial low byte
+		sbc	result_ext		; subtract partial low byte
 		sta	sfac			; save remainder low byte
 		lda	sfac+1			; get remainder high byte
-		sbc	result+1		; subtract partial high byte
+		sbc	result_ext+1		; subtract partial high byte
 		sta	sfac+1			; save remainder high byte
 
 		inc	stack,x			; increment Root

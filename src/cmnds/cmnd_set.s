@@ -24,15 +24,34 @@
 ;----------------------------------------------------------------------
 ; From main
 .import global_cursor
+.import global_status
+.import global_dbaserr
+.importzp line_ptr
 
 ; From get_tokens
 .import on_off_flag
 .import opt_num
 
-.import date_fmt
+; From cmnd_set_fields.s
+.import cmnd_set_fields
+
+; From cmnd_set_date
+.import cmnd_set_date
+
+; From cmnd_set_filter.s
+.import cmnd_set_filter
+
+; From cmnd_set_message.s
+.import cmnd_set_message
+.import message_display
+.import status_display
 
 ; From debug
 .import PrintHexByte
+
+; From dbf.lib
+;.import dbf_set_fields
+.import set_deleted
 
 ;----------------------------------------------------------------------
 ;				exports
@@ -50,8 +69,6 @@
 ;----------------------------------------------------------------------
 ;			Defines / Constantes
 ;----------------------------------------------------------------------
-OPT_CENTURY = 24
-OPT_CURSOR = 25
 
 ;----------------------------------------------------------------------
 ;				Variables
@@ -60,6 +77,7 @@ OPT_CURSOR = 25
 	.segment "ZEROPAGE"
 
 	.segment "DATA"
+		; 4x8 = 32 options possibles
 		unsigned char options[4]
 
 .popseg
@@ -166,8 +184,17 @@ OPT_CURSOR = 25
 .endif
 
 ;----------------------------------------------------------------------
+; SET ALTERNATE | BELL | CARRY | CATALOG | COLON | CONFIRM | CONSOLE
+;     DEBUG | DELETE | DELIMITERS | ECHO | EJECT | ENCRYPT | ESCAPE
+;     EXACT | FIELDS | FIXED | HEADING | HELP | HISTORY | INTENSITY
+;     MENUS | LINKAGE | PRINT | STATUS | STEP | TALK | TITLE
+;     DELETED | DOHISTORY | SAFETY | SCOREBOARD | UNIQUE | CENTURY
+;     CURSOR
 ;
 ; Entrée:
+;	A: n° de token 'SET'
+;	X: offset des paramètres (ON, OFF, TO)
+;	Y: offset vers la fin de la ligne ou l'argument du paramètre (TO ...)
 ;
 ; Sortie:
 ;	A,X,Y: Modifiés
@@ -185,29 +212,49 @@ OPT_CURSOR = 25
 ;	-
 ;----------------------------------------------------------------------
 .proc cmnd_set
+		; TO?
+		lda	on_off_flag
+		cmp	#$02
+		beq	set_to
+
+		; SET OPTION <expr>
+		cmp	#$ff
+		bne	set1
+		jmp	set_
+
+		; Ici syntaxe: SET option ON | OFF
+	set1:
+		lda	opt_num
+		cmp	#_OPT_TO_
+		bcs	error10
+
+		; Vérifie qu'il n'y a rien après ON | OFF
+		lda	(line_ptr),y
+		bne	error10
+
 		lda	opt_num
 		jsr	get_option_byte
 
+		; OFF?
 		lda	on_off_flag
-		beq	off
+		beq	set_off
 
-		; ON
+	set_on:
 		lda	options,x
 		ora	bits_table_1,y
 		sta	options,x
 
-		; Traitement spécifique pour le curseur
+		; Traitements spécifiques
 		lda	opt_num
-		cmp	#OPT_CURSOR
-		bne	end
+		jmp	set_option_on
 
-		sta	global_cursor
-
-	end:
-		clc
+	error10:
+		; 10 Syntax error.
+		sec
+		lda	#10
 		rts
 
-	off:
+	set_off:
 		; Off
 		; lda	bits_table_1,y
 		; ora	#$ff
@@ -215,16 +262,250 @@ OPT_CURSOR = 25
 		and	options,x
 		sta	options,x
 
-		; Traitement spécifique pour le curseur
+		; Traitements spécifiques
 		lda	opt_num
+		jmp	set_option_off
+
+	set_to:
+		; ALTERNATE | CATALOG | DATE | DELIMITERS | DEVICE | FIELDS | HEADING |
+		; HISTORY | PRINT | MARK
+		lda	opt_num
+		cmp	#_OPT_ON_OFF_TO_
+		bcc	error10
+
+		cmp	#_OPT_TO_
+		bcc	set_on_off_to
+
+		cmp	#_OPT_EXPR_
+		bcs	set_
+
+		; Ici syntaxe: SET xxx TO...
+		cmp	#OPT_FILTER
+		bne	set_message
+		jmp	cmnd_set_filter
+
+	set_message:
+		cmp	#OPT_MESSAGE
+		bne	error10
+		jmp	cmnd_set_message
+
+	set_:
+		; Ici syntaxe: SET OPTION <expr>
+		lda	opt_num
+		cmp	#OPT_DATE
+		bne	error10
+
+		jmp	cmnd_set_date
+	;	clc
+	;	rts
+
+	set_on_off_to:
+		lda	opt_num
+		cmp	#OPT_FIELDS
+		bne	error10
+
+		lda	on_off_flag
+		jmp	cmnd_set_fields
+
+	;	; SET xxx ON | OFF | TO
+	;	lda	(line_ptr),y
+	;	beq	set_to_default
+
+	;	; SET xxx TO ...
+
+	;set_to_default:
+	;	; SET xxx TO
+	;	clc
+	;	rts
+.endproc
+
+
+;----------------------------------------------------------------------
+;
+; Entrée:
+;	-
+;
+; Sortie:
+;	-
+;
+; Variables:
+;	Modifiées:
+;		-
+;
+;	Utilisées:
+;		-
+;
+; Sous-routines:
+;	-
+;----------------------------------------------------------------------
+.proc set_option_on
+
+	fields_on:
+		cmp	#OPT_FIELDS
+		bne	status_on
+
+		lda	on_off_flag
+		jmp	cmnd_set_fields
+
+	status_on:
+		cmp	#OPT_STATUS
+		bne	cursor_on
+		; 24 lignes
+		cputc	$0c
+		lda	#$18
+		sta	SCRFY
+
+		lda	#$ff
+		sta	global_status
+		; Affiche le message de statut
+		; Fait dans la boucle principale
+		jsr	status_display
+		jsr	message_display
+
+		clc
+		rts
+
+	cursor_on:
 		cmp	#OPT_CURSOR
+		bne	deleted_on
+
+		sta	global_cursor
+		clc
+		rts
+
+		; Traitement spécifique pour set_deleted
+	deleted_on:
+		cmp	#OPT_DELETED
+		bne	dbaserr_on
+
+		; /!\ set_deleted de dbf.lib est à 0 si actif
+		lda	#$00
+		sta	set_deleted
+		clc
+		rts
+
+		; Ajout perso
+	dbaserr_on:
+		cmp	#OPT_DBASERR
 		bne	end
+
+		lda	#$ff
+		sta	global_dbaserr
+
+	end:
+		clc
+		rts
+.endproc
+
+
+;----------------------------------------------------------------------
+;
+; Entrée:
+;	-
+;
+; Sortie:
+;	-
+;
+; Variables:
+;	Modifiées:
+;		-
+;
+;	Utilisées:
+;		-
+;
+; Sous-routines:
+;	-
+;----------------------------------------------------------------------
+.proc set_option_off
+	fields_off:
+		cmp	#OPT_FIELDS
+		bne	status_off
+
+		lda	on_off_flag
+		jmp	cmnd_set_fields
+
+	status_off:
+		cmp	#OPT_STATUS
+		bne	cursor_off
+		; 27 lignes
+		lda	#$1b
+		sta	SCRFY
+		cputc	$0c
+
+		lda	#$00
+		sta	global_status
+
+		clc
+		rts
+
+		; Traitement spécifique pour le curseur
+	cursor_off:
+		cmp	#OPT_CURSOR
+		bne	deleted_off
 
 		lda	#$00
 		sta	global_cursor
 		clc
 		rts
+
+		; Traitement spécifique pour set deleted
+	deleted_off:
+		cmp	#OPT_DELETED
+		bne	dbaserr_off
+
+		; /!\ set_deleted de dbf.lib est <> 0 si inactif
+		lda	#$ff
+		sta	set_deleted
+		clc
+		rts
+
+		; Ajout perso
+	dbaserr_off:
+		cmp	#OPT_DBASERR
+		bne	end
+
+		lda	#$00
+		sta	global_dbaserr
+	end:
+		clc
+		rts
 .endproc
+
+;----------------------------------------------------------------------
+;
+; Entrée:
+;	-
+;
+; Sortie:
+;	-
+;
+; Variables:
+;	Modifiées:
+;		-
+;
+;	Utilisées:
+;		-
+;
+; Sous-routines:
+;	-
+;----------------------------------------------------------------------
+;.proc set_fields
+;		cmp	#$00
+;		beq	fields_off
+;
+;		cmp	#$01
+;		beq	fields_on
+;
+;		jmp	cmnd_set_fields
+;
+;	fields_off:
+;		ldx	#$00
+;		jmp	dbf_set_fields
+;
+;	fields_on:
+;		ldx	#$ff
+;		jmp	dbf_set_fields
+;.endproc
 
 ;----------------------------------------------------------------------
 ;

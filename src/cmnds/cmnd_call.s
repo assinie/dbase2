@@ -20,7 +20,7 @@
 ;				imports
 ;----------------------------------------------------------------------
 ; From main.s
-.import input_mode
+.import main_input_mode
 
 ; From yacc.S
 .import token_start
@@ -29,8 +29,8 @@
 .import cmnd_goto
 
 ; From file.s
-.import push
-.import pop
+.import file_push
+.import file_pop
 
 ;----------------------------------------------------------------------
 ;				exports
@@ -71,7 +71,7 @@
 ;	cmnd_goto
 ;----------------------------------------------------------------------
 .proc cmnd_call
-		jsr	push
+		jsr	file_push
 		bcs	error
 		jmp	cmnd_goto
 
@@ -94,20 +94,20 @@
 ;	pop
 ;----------------------------------------------------------------------
 .proc cmnd_return
-		lda	input_mode
+		lda	main_input_mode
 		bne	return
 		; Pour debug
-		beq	return
+		; beq	return
 
 	error95:
 		; 95 Valid only in programs.
 		lda	#95
-		ldy	token_start
+		; ldy	token_start
 		sec
 		rts
 
 	return:
-		jsr	pop
+		jsr	file_pop
 		bcs	error
 
 	error:

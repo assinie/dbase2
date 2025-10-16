@@ -83,9 +83,11 @@
 ;
 ; Variables:
 ;	Modifiées:
-;		-
+;		- fns_save_a
+;		- string
+;		- param_type
 ;	Utilisées:
-;		-
+;		- pfac
 ; Sous-routines:
 ;	-
 ;----------------------------------------------------------------------

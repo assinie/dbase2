@@ -100,6 +100,10 @@
 ; Sous-routines:
 ;	-
 ;----------------------------------------------------------------------
+; dBase: affectation d'une valeur à un champ de la base ne modifie pas
+;        la valeur de ce champ et ne retourne pas d'erreur. Il faut
+;        utiliser la commande REPLACE
+;----------------------------------------------------------------------
 .proc affectation
 		sta	fns_ptr
 		stx	fns_ptr+1

@@ -33,6 +33,8 @@
 ;				exports
 ;----------------------------------------------------------------------
 .export cmnd_on
+.export on_key
+.export on_escape
 .export on_error
 
 ;----------------------------------------------------------------------
@@ -62,6 +64,8 @@
 		on_escape:
 			.res	LINE_MAX_SIZE,0
 
+	.segment "INSTJMP"
+		; Trouver un autre segment
 		on_ptrs:
 			.word	on_key, on_error, on_escape
 .popseg

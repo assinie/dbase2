@@ -29,11 +29,12 @@
 
 .import string
 .import param_type
-.import input_mode
+.import main_input_mode
 
-.import open
-.import close
-.import fp
+.import file_open
+.import file_close
+
+.import main_fp
 
 .import reset_labels
 
@@ -112,9 +113,9 @@
 ;
 ; Variables:
 ;	Modifiées:
-;		input_mode
+;		main_input_mode
 ;	Utilisées:
-;		fp
+;		main_fp
 ; Sous-routines:
 ;	open
 ;	close
@@ -171,9 +172,12 @@
 		; On essaye d'ouvrir le fichier
 		lda	#<filename
 		ldy	#>filename
-		jsr	open
-		bcc	loop_args
+		jsr	file_open
+		bcc	_close
 		rts
+	_close:
+		; On peut refermer le fichier, il sera ouvert par fgetline
+		jsr	file_close
 
 		; Ajout des arguments dans la ligne de commande
 	loop_args:
@@ -282,8 +286,8 @@
 		jsr	init_argv
 		sta	_argc
 
-		lda	fp
-		sta	input_mode
+		lda	main_fp
+		sta	main_input_mode
 
 		; Reset des labels
 		jsr	reset_labels
@@ -293,12 +297,13 @@
 		bcs	errorxx
 
 		; On peut refermer le fichier, il sera ouvert par fgetline
-		jsr	close
+		; déjà fait par fgsets
+		; jsr	file_close
 
 		; Pas de curseur allumé en mode batch
 		; cursor off
 
-		; Reset du buffer (déjà fait par open)
+		; Reset du buffer (déjà fait par scan)
 		; jsr	buffer_reset
 
 		rts

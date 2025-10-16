@@ -40,7 +40,7 @@
 
 .import binstr
 
-.import fExternal_error
+.import global_dbaserr
 
 ;----------------------------------------------------------------------
 ;				exports
@@ -65,7 +65,9 @@
 	.segment "ZEROPAGE"
 
 	.segment "DATA"
-
+	;	unsigned char save_x
+	;	fn_message_cmnd: .asciiz "dbaserr -q 0,%d /a/dbase.msg"
+	;	unsigned char string1[80]
 .popseg
 
 ;----------------------------------------------------------------------
@@ -100,7 +102,7 @@
 ;		param_type
 ;
 ;	Utilisées:
-;		fExternal_error
+;		global_dbaserr
 ;
 ; Sous-routines:
 ;	fn_run
@@ -146,11 +148,16 @@
 		bpl	loop
 
 		; Utilisation de dbaserr?
-		lda	fExternal_error
+		lda	global_dbaserr
 		beq	internal_msg
 
+	;	jsr	fn_fprintf
+	;	bne	internal_msg
+
 		lda	#<fn_message_cmnd
+	;	lda	#<string1
 		sta	pfac
+	;	lda	#>string1
 		lda	#>fn_message_cmnd
 		sta	pfac+1
 
@@ -177,3 +184,87 @@
 		rts
 .endproc
 
+;----------------------------------------------------------------------
+;
+; Entrée:
+;	fns_ptr: pointe vers la chaine du code erreur
+;
+; Sortie:
+;	A: Code erreur
+;	X: modifié
+;	Y: modifié
+;	Z: 0-> erreur, 1-> Ok
+;
+; Variables:
+;	Modifiées:
+;		pfac
+;		string1
+;		save_x
+;
+;	Utilisées:
+;		fn_message_cmnd
+;		fns_ptr
+;
+; Sous-routines:
+;	-
+;----------------------------------------------------------------------
+.if 0
+.proc fn_fprintf
+		; Recherche de %d dans la chaine
+		ldx	#$ff
+	loop:
+		inx
+		lda	fn_message_cmnd,x
+		sta	string1,x
+		beq	error10
+
+		cmp	#'%'
+		bne	loop
+
+		lda	fn_message_cmnd+1,x
+		cmp	#'d'
+		bne	loop
+
+		; Sauvegarde l'index (x: offser de '%')
+		stx	save_x
+
+		; Conversion
+	;	ldx	#<pfac
+	;	ldy	#>pfac
+	;	jsr	binstr
+
+	;	stx	fns_ptr
+	;	sty	fns_ptr+1
+
+		; Ajoute la chaine à string et default_err_msg
+	;	ldx	save_x
+		dex
+
+		ldy	#$ff
+	loop1:
+		iny
+		inx
+		lda	(fns_ptr),y
+		sta	string1,x
+		bne	loop1
+
+		; Copie la fin de la chaine
+		ldy	save_x
+		iny
+		dex
+	loop2:
+		iny
+		inx
+		lda	fn_message_cmnd,y
+		sta	string1,x
+		bne	loop2
+
+	end:
+		rts
+
+	error10:
+		; 10: Syntax error.
+		lda	#10
+		rts
+.endproc
+.endif

@@ -25,7 +25,7 @@
 .import fgets
 .import fseek
 
-.import fp
+.import main_fp
 
 .import linenum
 
@@ -35,18 +35,21 @@
 ;----------------------------------------------------------------------
 ;				exports
 ;----------------------------------------------------------------------
-.export open
-.export fgetline
-.export close
-.export fpos
+.export file_open
+.export file_fgetline
+.export file_close
+.export file_fpos
 
 ; Pour fgets
-.export reopen
+.export file_reopen
 
 ;.export stack_ptr
-.export empty_stack
-.export push
-.export pop
+.export file_empty_stack
+.export file_push
+.export file_pop
+
+; Pour cmnd_restore
+.export file_noreopen
 
 ;----------------------------------------------------------------------
 ;			Defines / Constantes
@@ -63,12 +66,17 @@ typedef .struct stack_item
 ;----------------------------------------------------------------------
 .pushseg
 	.segment "DATA"
-		unsigned long fpos
+		unsigned long file_fpos
 
 		unsigned short stack_ptr
 
 		; Voir pour utiliser un malloc et un pointeur vers la pile
 		struct stack_item, stack[MAX_LEVELS]
+
+		; [HACK] Utilisé par cmnd_restore
+		; $00 -> fonctionnement normal
+		; $xx -> pas de fopen()
+		unsigned char file_noreopen
 
 		; Pour fgetline
 		unsigned char buffer[LINE_MAX_SIZE]
@@ -96,11 +104,11 @@ typedef .struct stack_item
 ; Sous-routines:
 ;	fgets
 ;----------------------------------------------------------------------
-.proc open
+.proc file_open
 		sta	filename
 		sty	filename+1
 
-		fopen (filename), O_RDONLY, , fp
+		fopen (filename), O_RDONLY, , main_fp
 		cmp	#$ff
 		bne	end
 
@@ -112,7 +120,7 @@ typedef .struct stack_item
 		lda	#$00
 		ldy	#$03
 	loop:
-		sta	fpos,y
+		sta	file_fpos,y
 		sta	fpos_text,y
 		dey
 		bpl	loop
@@ -120,7 +128,7 @@ typedef .struct stack_item
 		; Initialise le buffer de lecture
 		jsr	buffer_reset
 
-		lda	fp
+		lda	main_fp
 
 		clc
 		rts
@@ -144,14 +152,32 @@ typedef .struct stack_item
 ;       Modifiées:
 ;               fpos
 ;       Utilisées:
-;               -
+;               main_fp
 ; Sous-routines:
 ;       ftell
 ;	fclose
 ;----------------------------------------------------------------------
-.proc close
-		jsr	ftell
-		fclose	(fp)
+.proc file_close
+		; Si cmnd_restore en cours
+		lda	file_noreopen
+		bne	end_noreopen
+
+		; Fichier ouvert?
+		lda	main_fp
+		bmi	end
+
+		jsr	file_ftell
+		fclose	(main_fp)
+
+		; Indique fichier fermé
+		lda	#$ff
+		sta	main_fp
+
+		rts
+
+	end:
+	end_noreopen:
+		clc
 		rts
 .endproc
 
@@ -162,15 +188,15 @@ typedef .struct stack_item
 ; Sortie:
 ;
 ; Variables:
-;       Modifiées:
-;               -
-;       Utilisées:
-;               fp
+;	Modifiées:
+;		-
+;	Utilisées:
+;		-
 ; Sous-routines:
-;       ftell
+;	ftell
 ;	fclose
 ;----------------------------------------------------------------------
-.proc ftell
+.proc file_ftell
 		lda	#CH376_READ_VAR32
 		sta	CH376_COMMAND
 
@@ -178,17 +204,30 @@ typedef .struct stack_item
 		sta	CH376_DATA
 
 		lda	CH376_DATA
-		sta	fpos
+		sta	file_fpos
 
 		lda	CH376_DATA
-		sta	fpos+1
+		sta	file_fpos+1
 
 		lda	CH376_DATA
-		sta	fpos+2
+		sta	file_fpos+2
 
 		lda	CH376_DATA
-		sta	fpos+3
+		sta	file_fpos+3
 
+; [ TEST
+		cmp	#$ff
+		bne	end
+		cmp	file_fpos+2
+		bne	end
+		cmp	file_fpos+1
+		bne	end
+		cmp	file_fpos
+		bne	end
+	ftell_error:
+		nop
+	end:
+; ]
 		rts
 .endproc
 
@@ -210,7 +249,7 @@ typedef .struct stack_item
 ;
 ; TODO: supprimer les appels reopen et close et les intégrer dans fgets
 ;----------------------------------------------------------------------
-.proc fgetline
+.proc file_fgetline
 		; Compatibilité readline
 ;		jsr	reopen
 ;		bcs	end
@@ -245,7 +284,7 @@ typedef .struct stack_item
 ;
 ; Variables:
 ;       Modifiées:
-;               fp
+;               main_fp
 ;       Utilisées:
 ;               filename
 ;		submit_path
@@ -256,7 +295,11 @@ typedef .struct stack_item
 ;	print
 ;	crlf
 ;----------------------------------------------------------------------
-.proc reopen
+.proc file_reopen
+		; Si cmnd_restore en cours
+		lda	file_noreopen
+		bne	end_noreopen
+
 		; TODO: sauvegarder le pwd actuel pour pouvoir le restaurer
 		; après la réouverture du fichier au cas où on a exécuté un cd
 
@@ -265,9 +308,9 @@ typedef .struct stack_item
 		; chdir	path
 
 		fopen	(filename), O_RDONLY
-		sta	fp
-		stx	fp+1
-		eor	fp+1
+		sta	main_fp
+		stx	main_fp+1
+		eor	main_fp+1
 		bne	seek
 
 		prints	"No such file or directory: "
@@ -281,6 +324,7 @@ typedef .struct stack_item
 	seek:
 		jsr	fseek
 
+	end_noreopen:
 		clc
 		lda	#EOK
 		rts
@@ -302,7 +346,7 @@ typedef .struct stack_item
 ; Sous-routines:
 ;	-
 ;----------------------------------------------------------------------
-.proc empty_stack
+.proc file_empty_stack
 		lda	#$00
 		sta	stack_ptr
 		rts
@@ -324,7 +368,7 @@ typedef .struct stack_item
 ; Sous-routines:
 ;	-
 ;----------------------------------------------------------------------
-.proc push
+.proc file_push
 		; Voir pour utiliser un malloc et un pointeur vers la pile
 
 		pha
@@ -387,7 +431,7 @@ typedef .struct stack_item
 ; Sous-routines:
 ;	buffer_reset
 ;----------------------------------------------------------------------
-.proc pop
+.proc file_pop
 		pha
 
 		lda	stack_ptr
@@ -407,16 +451,16 @@ typedef .struct stack_item
 
 		; Restaure l'offset de la ligne
 		lda	stack+2,y
-		sta	fpos
+		sta	file_fpos
 		sta	fpos_text
 		lda	stack+3,y
-		sta	fpos+1
+		sta	file_fpos+1
 		sta	fpos_text+1
 		lda	stack+4,y
-		sta	fpos+2
+		sta	file_fpos+2
 		sta	fpos_text+2
 		lda	stack+5,y
-		sta	fpos+3
+		sta	file_fpos+3
 		sta	fpos_text+3
 
 		jsr	buffer_reset

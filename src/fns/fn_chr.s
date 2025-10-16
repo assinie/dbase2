@@ -81,11 +81,12 @@
 ;
 ; Variables:
 ;	Modifiées:
-;		-
+;		- param_type
+;		- string
 ;	Utilisées:
 ;		-
 ; Sous-routines:
-;	-
+;	- is_pfac_byte
 ;----------------------------------------------------------------------
 .proc fn_chr
 		lda	param_type

@@ -28,7 +28,7 @@
 ;----------------------------------------------------------------------
 ;				exports
 ;----------------------------------------------------------------------
-.export filter
+.export pattern_filter
 
 ;----------------------------------------------------------------------
 ;                       Segments vides
@@ -95,7 +95,7 @@
 ; PATTERN = $2000	; Address of pattern
 ; STR     = $6		; Pointer to string to match
 
-.proc filter
+.proc pattern_filter
 		ldx	#$00			; X is an index in the pattern
 		ldy	#$FF			; Y is an index in the string
 	next:

@@ -84,7 +84,7 @@
 
 ;----------------------------------------------------------------------
 ; str(<expN>)
-; TODO: str(<expN1>, <expN2>, [<expN3>])
+; TODO: str(<expN1>, [<expN2>], [<expN3>])
 ;
 ; Entrée:
 ;
@@ -92,11 +92,30 @@
 ;
 ; Variables:
 ;	Modifiées:
-;		-
+;		- fns_save_y
+;		- string
+;		- pfac
 ;	Utilisées:
 ;		-
 ; Sous-routines:
 ;	-
+;----------------------------------------------------------------------
+; dBase III: retourne une chaine de 10 caractères complétée à gauche
+;            par des ' ' par défaut.
+;            <expN2> permet de limiter le nombre total de caractères
+;                    '.' 'et signe '-' inclus
+;            <expN3> indique le nombre de décimales
+;
+;            <expN2> >= 2 + <expN3> sinon erreur 63
+;
+; retourne un chaine avec des '*' si la longueur de la chaine est
+; supérieure à <expN1>
+;
+; retourne un erreur 63: "STR(): Out of range." si <expN2> et <expN3>
+; sont incohérents:
+; str(num,1,2) => Erreur, 2 décimales nécessitent au moins 4 caractères
+;                 un chiffre au minimum avant la virgule + '.' + 2
+;                 décimales.
 ;----------------------------------------------------------------------
 .proc fn_str
 		sty	fns_save_y

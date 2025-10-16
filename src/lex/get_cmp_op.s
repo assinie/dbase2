@@ -87,6 +87,8 @@
 ;	Y: offset
 ;
 ; Sortie:
+;	A: comp_oper ou code erreur
+;	C: 0-> Ok, 1-> KO
 ;
 ; Variables:
 ;	Modifiées:
@@ -112,7 +114,7 @@
 
 		stx	lex_save_y
 		ldy	lex_save_y
-		lda	submit_line,y
+	;	lda	submit_line,y
 		rts
 
 		clc

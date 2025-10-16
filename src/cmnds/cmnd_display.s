@@ -6,6 +6,7 @@
 
 .include "telestrat.inc"
 .include "fcntl.inc"
+.include "errno.inc"
 
 ;----------------------------------------------------------------------
 ;			includes SDK
@@ -23,6 +24,7 @@
 ;----------------------------------------------------------------------
 ;				imports
 ;----------------------------------------------------------------------
+; From yacc.s
 .import token_start
 
 .import ident
@@ -51,6 +53,23 @@
 .import submit_line
 
 .import opt_display
+
+; From cmnd_display_status
+.import cmnd_display_status
+
+; From fn_isopen.s
+;.import fn_isopen
+
+; From cmnd_set.s
+.import get_option
+
+; From dbf.lib
+.import dbf_isopen
+.import dbf_display_struct
+.import dbf_display_header
+.import dbf_display_record
+.import dbf_list_record
+.import dbf_display_headings
 
 ;----------------------------------------------------------------------
 ;				exports
@@ -93,6 +112,7 @@
 .segment "CODE"
 
 ;----------------------------------------------------------------------
+; DISPLAY <> | FILES | HISTORY | MEMORY | STATUS | STRUCTURE | <liste>
 ;
 ; Entrée:
 ;	A : token_number (n° de la commande)
@@ -112,6 +132,8 @@
 
 ;		lda	param_type
 ;		beq	display_memory
+		lda	ident
+		beq	display_record
 
 		ldx	#$ff
 	loop_id:
@@ -133,7 +155,15 @@
 		; 4: "STRUCTURE"
 		cmp	#$02
 		; bne	error10
-		bne	variable
+		beq	display_memory
+
+		cmp	#$03
+		beq	display_status
+
+		cmp	#$04
+		beq	display_structure
+
+		jmp	variable
 
 	display_memory:
 		; Initialise la routine d'affichage d'une entrée
@@ -142,8 +172,31 @@
 		jsr	var_set_callback
 
 		jsr	var_list
+	end_noerror:
 		clc
 		rts
+
+	display_status:
+	;	jsr	dbf_isopen
+	;	bne	error52
+
+	;	jsr	dbf_display_header
+	;	clc
+	;	rts
+		jmp	cmnd_display_status
+
+	display_structure:
+		jsr	dbf_isopen
+		bne	error52
+		jsr	dbf_display_header
+		jsr	dbf_display_struct
+		cmp	#EOK
+		beq	end_noerror
+
+		; 52: No databse is in USE.
+	error52:
+		lda	#52
+		bne	end_error
 
 	variable:
 
@@ -179,11 +232,32 @@
 		clc
 		rts
 
+	display_record:
+		jsr	dbf_isopen
+	;	bcs	error52
+		bne	error52
+		; [ Affichage en ligne (DISPLAY)
+		lda	#OPT_HEADINGS
+		jsr	get_option
+		beq	no_headings
+
+		jsr	dbf_display_headings
+
+	no_headings:
+		jsr	dbf_list_record
+		; ]
+		; [ Affichage en colonne
+		;jsr	dbf_display_record
+		; ]
+		clc
+		rts
+
 	error12:
 		;prints	"unknown variable: "
 		;print	ident
 		; 12 Variable not found.
 		lda	#12
+	end_error:
 		ldy	token_start
 		sec
 		rts

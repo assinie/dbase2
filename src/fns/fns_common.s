@@ -61,16 +61,21 @@
 .segment "CODE"
 
 ;----------------------------------------------------------------------
+; Vérifie si pfac contient une valeur positive et inférieure à 256
 ;
 ; Entrée:
-;
+;	-
 ; Sortie:
+;	- A: modifié
+;	- X: inchangé
+;	- Y: inchangé
+;	- Z: 1-> Ok, 0-> Ko
 ;
 ; Variables:
 ;	Modifiées:
 ;		-
 ;	Utilisées:
-;		-
+;		- pfac
 ; Sous-routines:
 ;	-
 ;----------------------------------------------------------------------

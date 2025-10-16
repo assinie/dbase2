@@ -32,6 +32,7 @@
 .import _find_cmnd
 
 ; From lex
+.importzp lex_ptr
 .import on_off_flag
 .import lex_save_y
 
@@ -80,30 +81,42 @@
 .segment "CODE"
 
 ;----------------------------------------------------------------------
-; "ON" | "OFF"
+; "ON | OFF | TO"
 ;
 ; Entrée:
 ;	AX: adresse de la ligne
 ;	Y: offset dans la ligne
 ;
 ; Sortie:
-;	A: dernier caractère lu
+;	A: dernier caractère lu ou code erreur
 ;	Y: offset vers le dernier caractère lu
 ;	C: 0-> Ok, 1->erreur (option on trouvée)
 ;	Z: fonction du dernier caractère lu (Z=1 -> EOL)
 ;
 ; Variables:
 ;	Modifiées:
-;		string
-;		prt
+;		lex_save_y
+;		on_off_flag: 0->'OFF', 1->'ON', 2->'TO', $ff-> ''
 ;
 ;	Utilisées:
-;		-
+;		opt_on_off
+;		submit_line
 ;
 ; Sous-routines:
-;	-
+;	_find_cmnd
 ;----------------------------------------------------------------------
 .proc get_on_off
+	;	sta	lex_ptr
+	;	stx	lex_ptr+1
+
+	;	lda	(lex_ptr),y
+	;	bne	get_opt
+
+	;	lda	#$ff
+	;	sta	on_off_flag
+	;	bne	end
+
+	get_opt:
 		sty	lex_save_y
 		ldx	lex_save_y
 		lda	#<opt_on_off
@@ -116,17 +129,25 @@
 		; Y = offset du caractère après la commande
 		sta	on_off_flag
 		stx	lex_save_y
+	end1:
 		ldy	lex_save_y
+	end:
 		lda	submit_line,y
 		rts
 
-		clc
-		rts
+	;	clc
+	;	rts
+	;error:
+	;	ldy	lex_save_y
+	;	; Syntax error.
+	;	lda	#10
+	;	sec
+	;	rts
+
 	error:
-		ldy	lex_save_y
-		; Syntax error.
-		lda	#10
-		sec
-		rts
+		lda	#$ff
+		sta	on_off_flag
+		clc
+		bcc	end1
 .endproc
 

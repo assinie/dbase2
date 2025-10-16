@@ -6,6 +6,7 @@
 
 .include "telestrat.inc"
 .include "fcntl.inc"
+.include "errno.inc"
 
 ;----------------------------------------------------------------------
 ;			includes SDK
@@ -17,16 +18,22 @@
 ;			include application
 ;----------------------------------------------------------------------
 .include "include/dbase.inc"
-.include "macros/readline.mac"
 
 ;----------------------------------------------------------------------
 ;				imports
 ;----------------------------------------------------------------------
+; From cond_expr.s
+.import cond_value
+.import cond_expr
+
+; From scan.s
+.import push_if
+.import pop_endif
 
 ;----------------------------------------------------------------------
 ;				exports
 ;----------------------------------------------------------------------
-.export cmnd_xxx
+.export cmnd_do_while
 
 ;----------------------------------------------------------------------
 ;                       Segments vides
@@ -46,6 +53,7 @@
 	.segment "ZEROPAGE"
 
 	.segment "DATA"
+
 .popseg
 
 ;----------------------------------------------------------------------
@@ -66,6 +74,7 @@
 ; Entrée:
 ;
 ; Sortie:
+;	C: 1 -> erreur
 ;
 ; Variables:
 ;	Modifiées:
@@ -73,14 +82,52 @@
 ;	Utilisées:
 ;		-
 ; Sous-routines:
-;	-
+;	push_if
+;	pop_else
+;	cond_expr
 ;----------------------------------------------------------------------
-.proc cmnd_xxx
-		prints	"xxx"
-		crlf
+.proc cmnd_do_while
+;		lda	input_mode
+;		beq	error95
 
-		clc
+		; Si la syntaxe est
+		;	if <condition>
+		;		<bloc_instruction>
+		;	endif
+		; [
+		jsr	push_if
+		bcs	error43
+		; ]
+
+		; [
+		; jsr	cond_expr
+		; bcs	error
+		; ]
+		; [
+		lda	cond_value
+		; ]
+
+		bne	true
+
+	false:
+		jmp	pop_endif
+
+	true:
+		; clc
+		rts
+
+;	error95:
+;		; 95 Valid only in programs.
+;		lda	#95
+;		ldy	#$00
+;		sec
+	error:
+		rts
+
+	error43:
+		; 43 Insufficient memory.
+		lda	#43
+		; sec
 		rts
 .endproc
-
 

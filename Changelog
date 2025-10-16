@@ -1,0 +1,122 @@
+2025-10-16
+Modifications:
+	- CLEAR: ajout de CLEAR ALL | DATABASE
+	- DISPLAY: ajout de DISPLAY STRUCTURE | STATUS
+	- DISPLAY: sans paramètres (affiche l'enregistrement courant)
+	- prise en compte des noms de champ en plus des variables (get_param)
+	- séparation GOTO submit et GOTO dBase
+	- SPACE(): retourne une erreur si le paramètre est négatif
+	- scan.s: ajout traitement des blocs WHILE / WEND (maximum 12 blocs IF/ENDIF + WHILE/WEND)
+	- cmnd_set.s: modification de la syntaxe pour prendre en compte SET
+	xxx TO yyy en plus de SET xxx ON | OFF
+	- cmnd_set: prise en compte de SET FIELDS... et SET DATE...
+	- changement affectation des segments pour les tables (gain 460 octets pour la table
+	de relocation)
+	- Optimisation _find_cmnd, gain 2 octets, 8/12 cycles par caractère à
+	comparer -> 5/9 cycles et 11/15 cycles par caractère à sauter dans la table -> 5/12
+	- Modification de RULE_FN_N pour accepter une expressoin numérique au
+	lieu d'une simple valeur numérique
+	- Modification de la table des fonctions: suppression de '(' dans le
+	nom des fonctions et ajout de '('+$80 dans les régles correspondantes
+	- Modification de _find_cmnd pour accepter une abréviation à 4
+	caractères
+	- Autorise [] comme délimiteurs pour les chaînes de caractères
+
+Bugfix:
+	- cmnd_do: ne fermait pas le fichier après l'avoir ouvert pour tester son existence
+	- cmnd_restore: n'efface plus les variables si le fichier n'a pas pu être ouvert
+	- cmnd_restore / file_close / file_reopen: ne ferme plus le fichier pendant la lecture par cmnd_restore
+	- AT(): incorrect si le deux chaînes ont la même longueur
+	- cmnd_display_status: correction incrémentation de work_ptr
+
+Ajouts:
+	- GOTO <exprN>
+	- LIST
+	- SKIP [<exprN>]
+	- USE <filename>
+	- WHILE / LOOP / EXIT / WEND
+	- BOF()
+	- DBF()
+	- DELETED()
+	- EOF()
+	- FIELD()
+	- LUPDATE()
+	- RECNO()
+	- RECCOUNT()
+	- RECSIZE()
+	- TRANSFORM(): version simplifiée, ne prend en compte que les
+	fonctions numériques 'CX(' et alphanumériques '!'
+	- FKMAX()
+	- FKLABEL()
+	- opérateur '$' (cond_expr)
+	- .NOT.: uniquement en début de condition (get_expr_logic)
+	- SET DELETED ON/off
+	- SET FIELDS TO  / SET FIELDS ON | OFF (dBase III uniquement)
+	- SET FILTER TO (pris en compte uniquement par LIST, dbf_goto_top et
+	- SET STATUS on/OFF (réserve 3 dernières lignes, ajouter l'affichage
+	du statut)
+	SKIP 1 pour le moment)
+	- SET EXACT on/OFF
+	- SET DBASERR on/OFF (ajout perso)
+	- SET HEADINGS ON/off
+
+BUG:
+	- si on dépasse la fin de fichier, la zone mémoire qui contient les
+	champs n'est pas remmise à 0 (cf: use repert; list ; display)
+	- Vérifier que les sta string,x ne dépassent pas la taille de string (cf
+	get_field) / Aligner la taille de string sur celle de
+	dbview/field_value
+	- Si SET FIELDS ON et aucun champ sélectionné => aucun champ affiché
+	- Si SET FIELDS TO et ouverture d'un fichier dBase II => aucun champ
+	affiché => Ok
+	- SET FILTER reste actif après la fermeture d'un fichier => Ok
+
+TODO:
+	- Ajouter un SET DELETED ON à l'initialisation du programme pour être
+	conforme à dbf.lib (ou prendre la valeur de set_deleted de dbf.lib) =>
+	Ok
+
+	- Modifier strcmp (cond_expr.s) pour être conforme à dBase: a='123';
+	b='12345'; b = a => .T., a = b => .F.
+	dBase ne compare que sur la longueur de l'argument à droite de '=' par
+	défaut, si on veut une comparaison complète il faut faire SET EXACT ON
+	=> OK
+
+	- Optimiser les fseek pour éviter un accès disque si l'offset
+	destination est déjà dans le cache.
+
+	- Supprimer le filtre sur changement ou fermeture de la base => Ok
+	- Transférer la variable 'filter' de cmnd_set_filter' vers
+	dbview/dbf.s => Ok (bonne idée?)
+	- Ajouter dbf_set_filter dans dbf.lib
+	- Modifier GOTO TOP/BOTTOM, SKIP <n> pour prendre en compte le filtre
+	- Modifier cmnd_goto pour prendre en compte TOP et BOTTOM
+
+	- Ajouter / activer test mode interactif pour certaines commandes
+
+	- Ajouter SET FIELDS OFF & SET FILTER TO sur ouverture / fermeture d'un
+	fichier => Ok
+
+	- @ l,c ne tient pas compte des marges de l'écran (SCRDX, SCRDY,
+	SCRFX, SCRFY)
+
+	- Supprimer main:global_cursor et transférer la gestion du curseur
+	dans SET CURSOR (évitera de faire cursor on/off à chaque passage dans
+	la boucle principale)
+
+	- Copier le flag set status dans une variable globale global_status =>
+	Ok
+	- Faire un appel à status_display dans la boucle principale => OK
+	(à déplacer dans les instructions qui manipulent les fichiers .dbf
+	pour limiter le ralentissement) => Ok: modification de cmnd_set.s,
+	cmnd_goto.s, cmnd_use.s, cmnd_skip.s, cmnd_close.s, cmnd_list.s
+
+	- Ajouter le nom du programme en cours sur la ligne de statut
+
+	- Modifier _find_cmnd pour prendre en compte des abréviations (4
+	caractères) => Ok
+
+	- Ajouter une option pour spécifier l'exécutable dbaserr pour les
+	messages d'erreur
+
+	- Fusionner cmn_display et cmnd_list

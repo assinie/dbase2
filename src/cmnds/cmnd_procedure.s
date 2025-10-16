@@ -22,7 +22,7 @@
 ;----------------------------------------------------------------------
 ;				imports
 ;----------------------------------------------------------------------
-.import input_mode
+.import main_input_mode
 .import ident
 
 .import token_start
@@ -110,7 +110,7 @@
 ;	-
 ;----------------------------------------------------------------------
 .proc cmnd_procedure
-		lda	input_mode
+		lda	main_input_mode
 		bne	define_proc
 		; Pour debug
 		beq	define_proc

@@ -1,80 +1,80 @@
+
 ;----------------------------------------------------------------------
 ;			includes cc65
 ;----------------------------------------------------------------------
 .feature string_escapes
 
 .include "telestrat.inc"
-.include "errno.inc"
+.include "fcntl.inc"
 
 ;----------------------------------------------------------------------
 ;			includes SDK
 ;----------------------------------------------------------------------
 .include "SDK.mac"
 .include "types.mac"
+.include "errno.inc"
 
 ;----------------------------------------------------------------------
 ;			include application
 ;----------------------------------------------------------------------
 .include "include/dbase.inc"
+.include "macros/readline.mac"
 
 ;----------------------------------------------------------------------
 ;				imports
 ;----------------------------------------------------------------------
-.ifdef LABEL_CHR
-	.import cmnd_label
-.else
-	.import cmnd_table
-.endif
+; From main
+.import main_input_mode
+.import global_status
 
-.import skip_spaces
-.import submit
+; From cmnd_set_message
+.import status_display
 
-.importzp line_ptr
+; From lex
+.import param_type
 
-.import token_start
-.import input_mode
+; From math.s
+.importzp pfac
+.importzp multiplier
+.importzp multiplicand
 
-.import ident
-.import ident1
-.import submit_line
-
-.import find_cmnd
-.import _find_cmnd
-
-.import fgetline
-.import buffer_reset
-.import fpos
-.import fpos_text
-.import fpos_prev
-.import push
-.import pop
-
-.import linenum
-
-.import labels
-.import label_num
-.import label_offsets
-.import label_line
-.import forward_label
+; From dbf.lib
+.import dbf_isopen
+.import dbf_goto
+.import dbf_goto_top
 
 ;----------------------------------------------------------------------
 ;				exports
 ;----------------------------------------------------------------------
 .export cmnd_goto
+.export cmnd_goto_top
+
+;----------------------------------------------------------------------
+;                       Segments vides
+;----------------------------------------------------------------------
+.segment "STARTUP"
+.segment "INIT"
+.segment "ONCE"
 
 ;----------------------------------------------------------------------
 ;			Defines / Constantes
 ;----------------------------------------------------------------------
-;.ifndef SUBMIT
-;	; Défini dans dbase.inc
-;	TOKEN_PROCEDURE = 23
-;.endif
 
 ;----------------------------------------------------------------------
 ;				Variables
 ;----------------------------------------------------------------------
 .pushseg
+	.segment "ZEROPAGE"
+
 	.segment "DATA"
+.popseg
+
+;----------------------------------------------------------------------
+;			Chaines statiques
+;----------------------------------------------------------------------
+.pushseg
+	.segment "RODATA"
+
 .popseg
 
 ;----------------------------------------------------------------------
@@ -85,11 +85,11 @@
 ;----------------------------------------------------------------------
 ;
 ; Entrée:
-;	-
+;
 ; Sortie:
-;	-
+;
 ; Variables:
-;	Modifiées
+;	Modifiées:
 ;		-
 ;	Utilisées:
 ;		-
@@ -97,205 +97,93 @@
 ;	-
 ;----------------------------------------------------------------------
 .proc cmnd_goto
-		lda	input_mode
-		bne	search_proc
-		; Pour debug
-		beq	search_proc
+		sty	save_y+1
 
-	error95:
-		; 95 Valid only in programs.
-		lda	#95
-		ldy	token_start
-		sec
-		rts
+		jsr	dbf_isopen
+		bne	error52
 
-	search_proc:
-		lda	token_start
-		sta	my_token_start+1
+		lda	param_type
+		and	#$7f
+		cmp	#'N'
+		bne	error27
 
-		; Copie ident dans submit_line et dans ident1
-		ldx	#$ff
-	loop:
-		inx
-		lda	ident,x
-		sta	ident1,x
-		sta	submit_line,x
-		bne	loop
+		; Offset négatif?
+		lda	pfac+3
+		bmi	error5
 
-		; Table des labels vide?
-		lda	label_num
-		beq	not_found
+		; Offset > 65535?
+		ora	pfac+2
+		bne	error5
 
-		lda	#<labels
-		ldy	#>labels
-		ldx	#$00
-		jsr	_find_cmnd
-		bcs	not_found
+		; dbf_goto fait une multiplication 16x16
+		; lda	#$00
+		sta	multiplicand+2
+		sta	multiplicand+3
+		sta	multiplier+2
+		sta	multiplier+3
 
-	found:
-		; Récupère le numéro de ligne
-		asl
-		tax
-		lda	label_line,x
-		sta	linenum
-		lda	label_line+1,x
-		sta	linenum+1
+		lda	pfac
+		ldx	pfac+1
+		jsr	dbf_goto
+		cmp	#EOK
+		bne	error
 
-		; Récupère l'offser du label
-		txa
-		asl
-		tax
-		lda	label_offsets,x
-		sta	fpos
-		sta	fpos_text
-		lda	label_offsets+1,x
-		sta	fpos+1
-		sta	fpos_text+1
-		lda	label_offsets+2,x
-		sta	fpos+2
-		sta	fpos_text+2
-		lda	label_offsets+3,x
-		sta	fpos+3
-		sta	fpos_text+3
-
-		jsr	buffer_reset
-
-		clc
-		rts
-
-
-	not_found:
-		; On parcourt le fichier jusqu'à ce qu'on trouve le label
-		; ou la fin du fichier
-		lda	forward_label
-		beq	error82
-
-		; [ Sauvegarde la position de l'instruction goto en cas d'erreur
-;		ldy	#$03
-;	loop_fpos:
-;		lda	fpos_prev,y
-;		sta	fpos_text,y
-;		dey
-;		bpl	loop_fpos
-		; ]
-
-		jsr	push
-
-	next:
-		jsr	fgetline
-		bcs	error82b
-
-		ldx	#LINE_MAX_SIZE
-		sta	line_ptr
-		sty	line_ptr+1
-;		jsr	submit
-;		bcs	error82b
-
-;		lda	line_ptr
-;		ldx	line_ptr+1
-;		ldy	#$00
-;		jsr	skip_spaces
-
-		; Ligne vide
-		ldy	#$00
-		lda	(line_ptr),y
-		beq	next
-
-;		cmp	#REM_CHR
-;		beq	next
-
-	.ifdef LABEL_CHR
-			; [ Specifique submit
-			; ':' obligatoirement en première colonne
-			cmp	#LABEL_CHR
-			bne	next
-
-			; Expansion des variables (compatibilité submit)
-			;ldx	#LINE_MAX_SIZE
-			;sta	line_ptr
-			;sty	line_ptr+1
-			jsr	submit
-			bcs	error82b
-
-			; Définition du label
-			lda	line_ptr
-			ldx	line_ptr+1
-			ldy	#$00
-			jsr	cmnd_label
-			bcs	error
-			; ]
-	.else
-			; [ sinon
-			; Expansion des variables
-			;ldx	#LINE_MAX_SIZE
-			;sta	line_ptr
-			;sty	line_ptr+1
-			jsr	submit
-			bcs	error82b
-
-			lda	line_ptr
-			ldx	line_ptr+1
-			ldy	#$00
-			jsr	skip_spaces
-
-			; Ligne vide?
-			lda	(line_ptr),y
-			beq	next
-
-			cmp	#REM_CHR
-			beq	next
-
-			; Chercher dans la table cmnd_table et vérifier
-			; si il s'agit de l'instruction PROCEDURE
-			lda	#<cmnd_table
-			ldx	#>cmnd_table
-			jsr	find_cmnd
-			bcs	error
-			cmp	#TOKEN_PROCEDURE
-			bne	error
-			; ]
-	.endif
-
-		ldx	#$ff
-	loop1:
-		inx
-		lda	ident1,x
-		sta	submit_line,x
-		bne	loop1
-
-		lda	#<labels
-		ldy	#>labels
-		ldx	#$00
-		jsr	_find_cmnd
-		bcs	next
-		jsr	pop
-		bcs	error82b
-		jmp	found
-
-	error82b:
-		jsr	pop
-		jsr	fgetline
-
-	error82:
-		; 13 ALIAS not found.
-		; 31 Invalid function name.
-		; 54 Label file invalid.
-
-		; 82 ** Not Found **
-		lda	#82
-
-		; token_start pointe sur le premier caractère du nom
-		; de la procédure
-	my_token_start:
-		ldy	#$00
-		sec
-		rts
+	end:
+		; clc
+		; rts
+		jmp	status_display
 
 	error:
-		pha
-		jsr	error82b
-		pla
+		cmp	#ERANGE
+		beq	error5
+
+		; EIO
+
+		; 64: Internal error:"
+		lda	#64
+		bne	end_error
+
+	error5:
+		; Pas d'erreur en mode programme en cas BOF ou EOF
+		lda	main_input_mode
+		bne	end
+
+		; 5: Record is out of range.
+		lda	#$5
+		bne	end_error
+
+	error27:
+		; 27: Not a numeric expression.
+		lda	#27
+		bne	end_error
+
+	error52:
+		; 52: No database is in USE.
+		lda	#52
+
+	end_error:
+	save_y:
+		ldy	#$ff
+		sec
 		rts
 .endproc
 
+;----------------------------------------------------------------------
+;
+; Entrée:
+;
+; Sortie:
+;
+; Variables:
+;	Modifiées:
+;		-
+;	Utilisées:
+;		-
+; Sous-routines:
+;	-
+;----------------------------------------------------------------------
+.proc cmnd_goto_top
+		jsr	dbf_goto_top
+		jmp	status_display
+.endproc
 

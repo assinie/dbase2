@@ -28,7 +28,7 @@
 .import token_start
 .import cmnd_procedure
 
-.import input_mode
+.import main_input_mode
 .importzp line_ptr
 
 ;----------------------------------------------------------------------
@@ -88,7 +88,7 @@
 ;	-
 ;----------------------------------------------------------------------
 .proc cmnd_label
-		lda	input_mode
+		lda	main_input_mode
 		bne	define_proc
 		; Pour debug
 		beq	define_proc

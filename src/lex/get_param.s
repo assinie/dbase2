@@ -52,6 +52,8 @@
 .import get_string
 .import get_int
 
+.import get_field
+
 ;----------------------------------------------------------------------
 ;				exports
 ;----------------------------------------------------------------------
@@ -132,6 +134,7 @@
 ;	Utilisées:
 ;		-
 ; Sous-routines:
+;	get_field
 ;	get_ident
 ;	get_int
 ;	get_string
@@ -155,7 +158,10 @@
 		beq	_string
 		cmp	#'''
 		beq	_string
-
+	.ifndef SUBMIT
+		cmp	#'['
+		beq	_string
+	.endif
 		; Nombre?
 		lda	lex_ptr
 		jsr	get_int
@@ -248,6 +254,12 @@
 
 
 	variable:
+		; Champ de la base?
+		jsr	get_field
+		bcs	variable1
+		rts
+
+	variable1:
 		; Variable existante?
 		jsr	clear_entry
 		ldx	#$ff

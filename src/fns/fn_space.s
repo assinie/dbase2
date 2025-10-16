@@ -88,6 +88,9 @@
 ;	-
 ;----------------------------------------------------------------------
 .proc fn_space
+		lda	pfac+3
+		bmi	error60
+
 		jsr	is_pfac_byte
 		bne	error59
 
@@ -121,9 +124,14 @@
 		lda	#59
 		bne	error
 
-	error27:
-		; 27 Not a numeric expression.
-		lda	#27
+	error60:
+		; 60 SPACE() : Negative.
+		lda	#60
+;		bne	error
+
+;	error27:
+;		; 27 Not a numeric expression.
+;		lda	#27
 
 	error:
 		sec

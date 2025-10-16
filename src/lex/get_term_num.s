@@ -28,6 +28,7 @@
 .import term_y
 
 ; From lex
+.importzp lex_ptr
 .import lex_prev_y
 
 .importzp pfac
@@ -41,6 +42,7 @@
 ; From math.s
 .import push_num
 .import pull_num
+.import math_get_sp
 .import add
 .import sub
 .import divide
@@ -125,6 +127,13 @@
 		lda	#$ff
 		sta	flag
 		; ]
+;		jsr	math_get_sp
+;		; On soustrait 4 parce que on empile une valeur lors de la première passe
+;		sec
+;		sbc	#$04
+;		sta	check_sp+1
+;		ldy	lex_prev_y
+
 	loop:
 
 		lda	term_a
@@ -134,7 +143,16 @@
 		beq	end
 
 		jsr	term
-		bcc	loop
+;		bcc	loop
+		bcc	end
+
+;		jsr	skip_spaces
+;		jmp	end
+
+;		jsr	math_get_sp
+;	check_sp:
+;		cmp	#$ff
+;		beq	end
 
 	error:
 		ldy	lex_prev_y
@@ -430,7 +448,7 @@
 ;		jsr	push_var
 
 
-;	L27:
+	L27:
 ;		bcc	L28
 	L27a:
 		lda	term_a
@@ -480,6 +498,8 @@
 ;	-
 ;----------------------------------------------------------------------
 .proc expect_char
+;		sty	lex_prev_y
+
 		sta	cmp_a+1
 
 		lda	term_a

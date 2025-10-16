@@ -75,9 +75,10 @@
 .import linenum
 
 ; From file.s
-.import open
-.import close
-.import fgetline
+.import file_open
+.import file_close
+.import file_fgetline
+.import file_noreopen
 
 ; From cmnd_run.s
 .import set_errorlevel
@@ -114,6 +115,10 @@
 ; From math.s
 .import init_aexp
 
+; From  cmnd_set_message
+;.import status_display
+;.import message_display
+
 ;----------------------------------------------------------------------
 ;				exports
 ;----------------------------------------------------------------------
@@ -130,22 +135,26 @@
 .export vars_index
 .export vars_datas
 .export global_cursor
+.export global_status
 
 ; Pour utils
 .export submit_line
 
 ; Mode interractif
-.export input_mode
+.export main_input_mode
 
 ; Pour fgets
-.export fp
+.export main_fp
 
 .export entry
 
 .export version
 
 ; Pour fn_message()
-.export fExternal_error
+.export global_dbaserr
+
+; Général
+.exportzp work_ptr
 
 ;----------------------------------------------------------------------
 ;                       Segments vides
@@ -157,7 +166,6 @@
 ;----------------------------------------------------------------------
 ;			Defines / Constantes
 ;----------------------------------------------------------------------
-OPT_CURSOR = 25
 
 ;----------------------------------------------------------------------
 ;				Variables
@@ -187,19 +195,22 @@ OPT_CURSOR = 25
 	.endif
 
 		; Mode interractif (0)  ou non (1)
-		unsigned char input_mode
+		unsigned char main_input_mode
 
 		; File pointer
-		unsigned short fp
+		unsigned short main_fp
 
 		; Flag pour l'utilisation de dbaserr
-		unsigned char fExternal_error
+		unsigned char global_dbaserr
 
 		; Pour find_cmnd
                 unsigned char submit_line[LINE_MAX_SIZE]
 
 		; Pour cmnd_set
 		unsigned char global_cursor
+
+		; Pour la gestion de l'affichage du status
+		unsigned char global_status
 
 ;		unsigned char ident_dst[IDENT_LEN+1]
 		; index[]: un pointeur par lettre de l'alphabet
@@ -264,23 +275,76 @@ OPT_CURSOR = 25
 ;		jsr	check_kernel_version
 
 	.ifndef SUBMIT
-		; cursor	on
+		; Pour cmnd_set: Il faut que (line_ptr),y pointe vers une chaine nulle
+		; [
+		lda	#<submit_line
+		sta	line_ptr
+		lda	#>submit_line
+		sta	line_ptr+1
+
+		;  [ lignes ci-dessous inutiles si le segmnt DATA est initialisé à $00
+		; lda	#$00
+		; tay
+		; sta	(line_ptr),y
+		;   ]
+		;   [ Si DATA initialisé à $00
+		ldy	#$00
+		;   ]
+		; ]
+		; [ Autre solution, dans ce cas modifier cmnd_set pour ne pas faire le test
+		;  (line_ptr),y si X == 0
+		; ldx	#$00
+		; ]
+
+		; SET CURSOR ON
 		lda	#OPT_CURSOR
 		sta	opt_num
 		sta	on_off_flag
 		jsr	cmnd_set
+
+		; SET DELETED ON
+		lda	#OPT_DELETED
+		sta	opt_num
+		; sta	on_off_flag
+		jsr	cmnd_set
+
+		; SET HEADINGS ON
+		lda	#OPT_HEADINGS
+		sta	opt_num
+		; sta	on_off_flag
+		jsr	cmnd_set
+
+		; SET STATUS OFF
+		lda	#OPT_STATUS
+		sta	opt_num
+		lda	#$00
+		sta	on_off_flag
+		jsr	cmnd_set
+
+		; SET DBASERR OFF
+		lda	#OPT_DBASERR
+		sta	opt_num
+		jsr	cmnd_set
+
 	.else
 		; lda	#$00
 		lda	#$ff
 		sta	global_cursor
+
+		; Utilise dbaserr pour les messages d'erreur
+		; TODO: Ajouter une option au lancement de dBase
+		;lda	#$ff
+		lda	#$00
+		sta	global_dbaserr
+
 	.endif
 		; Mode interractif
 		lda	#$00
-		sta	input_mode
+		sta	main_input_mode
 
-		; Utilise dbaserr pour les messages d'erreur
-		lda	#$01
-		sta	fExternal_error
+		; Autorise reopen
+		sta	file_noreopen
+
 
 	.ifdef WITH_HISTORY
 			sta	history_index
@@ -309,6 +373,13 @@ OPT_CURSOR = 25
 			set_callback	KEY_UP, key_history
 			set_callback	KEY_DOWN, key_history
 	.endif
+		; [ TEST touches de fonction
+		;on = 1
+		;off = 0
+		;set_option	return_if_cc, on
+		;set_option	return_if_cs, off
+		;set_callback	KEY_FUNCT, function_callback
+		; ]
 
 		initmainargs _argv, , 1
 		; [ compatibilité submit $0=<nom_du_pgm>
@@ -366,15 +437,15 @@ OPT_CURSOR = 25
 		; ]
 		jsr	get_argv
 
-		jsr	open
+		jsr	file_open
 		bcs	loop
 
-		; copie fp dans input_mode
-		; /!\ suppose que fp ne peur pas être nul
-		sta	input_mode
+		; copie main_fp dans main_input_mode
+		; /!\ suppose que main_fp ne peur pas être nul
+		sta	main_input_mode
 
 		; On peut refermer le fichier, il sera ouvert par fgetline
-		jsr	close
+		jsr	file_close
 
 		; Recherche des blocs IF/ELSE/ENDIF
 		jsr	scan
@@ -389,13 +460,25 @@ OPT_CURSOR = 25
 		jsr	init_aexp
 		lda	global_cursor
 		beq	@cursor_off
+
 		cursor	on
 		jmp	@skip
+
 	@cursor_off:
 		cursor	off
 
-	@skip:
-		lda	input_mode
+	.ifndef SUBMIT
+		@skip:
+		;	lda	global_status
+		;	beq	@skip1
+		;	jsr	status_display
+		;	jsr	message_display
+		;@skip1:
+	.else
+		@skip:
+	.endif
+
+		lda	main_input_mode
 		beq	stdio
 
 		; Ctrl+C?
@@ -407,7 +490,7 @@ OPT_CURSOR = 25
 		bcs	exit_err
 
 		ldx	#LINE_MAX_SIZE
-		jsr	fgetline
+		jsr	file_fgetline
 		sta	line_ptr
 		sty	line_ptr+1
 		bcc	go
@@ -527,11 +610,11 @@ OPT_CURSOR = 25
 
 		jsr	disp_error
 ;		set_option	FILL_BUFFER, line_ptr
-		lda	input_mode
-		beq	loop
-		jsr	close
+		lda	main_input_mode
+		beq	beq_loop
+		jsr	file_close
 		lda	#$00
-		sta	input_mode
+		sta	main_input_mode
 
 	.ifndef SUBMIT
 		; /?\ boucle uniquement si en mode interactif?
@@ -541,6 +624,12 @@ OPT_CURSOR = 25
 	.endif
 
 	end:
+		; Dans le cas où on a SET STATUS ON
+		lda	#$1b
+		sta	SCRFY
+		; Dans le cas de SET CURSOR OFF
+		cursor	on
+		;
 		crlf
 		; TODO: Renvoyer un code erreur au processus père
 		; /!\ error_code contient le dernier code erreur et non le code
@@ -829,7 +918,7 @@ OPT_CURSOR = 25
 		crlf
 
 		; Utilisation de dbaserr?
-		lda	fExternal_error
+		lda	global_dbaserr
 		beq	internal_error
 
 		; Affiche le message d'erreur après la ligne
@@ -842,7 +931,7 @@ OPT_CURSOR = 25
 		; soit qu'on a une erreur lors de l'exécution de dbaserr, donc
 		; on peut forcer l'option à OFF
 		lda	#$00
-		sta	fExternal_error
+		sta	global_dbaserr
 
 		prints	"*** ERROR "
 		lda	save_a

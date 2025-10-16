@@ -23,7 +23,7 @@
 ;				imports
 ;----------------------------------------------------------------------
 ; From main
-.import input_mode
+.import main_input_mode
 
 ;----------------------------------------------------------------------
 ;				exports
@@ -80,7 +80,7 @@
 .proc cmnd_cancel
 		; Indique mode interractif
 		lda	#$00
-		sta	input_mode
+		sta	main_input_mode
 
 		; TODO: fermer tous les fichiers
 		clc

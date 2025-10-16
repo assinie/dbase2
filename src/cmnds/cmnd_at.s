@@ -85,6 +85,10 @@
 ; Sous-routines:
 ;	-
 ;----------------------------------------------------------------------
+; dBase: @ l,c : efface la ligne 'l' à partir de la colonne 'c'
+; dBase: ligne <= 24 (lignes 22-24 utilisées par le statut, écrasées
+;         par un SET MESSAGE ou un message d'aide)
+;----------------------------------------------------------------------
 .proc cmnd_at
 		; Vérifie que LINE < 256
 		lda	pfac1+1
@@ -122,7 +126,7 @@
 		beq	end
 
 		; On peut avoir un echo [-n] <string>
-		; (Pour dBASE on peut avoir SAY ou READ,
+		; (Pour dBASE on peut avoir GET, SAY, TO, CLEAR,
 		;  il faudra utiliser find_cmnd)
 		; [ Si la définition de PRINT est : .byte TERM, EOL, CMND::PRINT
 		; sec

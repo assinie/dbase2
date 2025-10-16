@@ -7,20 +7,23 @@
 .export opt_on_off
 ;.export set_opt
 .export opt_to
-;.export opt_date_fmt
+.export opt_date_fmt
 .export opt_display
+.export set_opt
 
-
+; TEMPORAIRE POUR TESTS
+.import cmnd_goto_top
 ;----------------------------------------------------------------------
 ;			Chaines statiques
 ;----------------------------------------------------------------------
 .pushseg
-	.segment "RODATA"
+	.segment "INSTTBL"
 
 		; --------------------------------------------------------------
 		;			Instructions
 		; --------------------------------------------------------------
 		; Liste des instructions			; Equivalent submit
+		; Indépendant de la position en mémoire
 		cmnd_table:
 			string80	"TEXT"			; test... endtext
 			string80	"CANCEL"
@@ -35,19 +38,20 @@
 			string80	"STORE"
 			string80	"DISPLAY"
 			string80	"?"			; echo
-;				TOKEN_PRINT = 12-2
+			;	TOKEN_PRINT = 12-2
 			string80	"??"			; echo -n
-;				TOKEN_PRINT_NOCR = 13-2
+			;	TOKEN_PRINT_NOCR = 13-2
 
 			string80	"RESTORE"		; restore from
 			string80	"SAVE"			; save to
 
-			string80	"IIF"			; iif
+			string80	"JJF"			; iif (submit)
 			string80	"IF"			; if
 			string80	"ELSE"
 			string80	"ENDIF"
 
-			string80	"SET-DATE"
+			; Intégré à cmnd_set
+			; string80	"SET-DATE"
 			string80	"RUN"
 			string80	"!"			; Alias de run
 
@@ -56,7 +60,7 @@
 			string80	"NOTE"			; rem [* ...]
 
 			string80	"PROCEDURE"
-;				TOKEN_PROCEDURE = 23
+			;	TOKEN_PROCEDURE = 22
 			string80	"DUMP"			; TEST
 
 			string80	"PARAMETERS"
@@ -71,21 +75,42 @@
 
 			string80	"DO"			; chain
 
-			string80	"DIR"
+			string80	"DIR"			; 30
 			string80	"TYPE"
 			string80	"MODIFY"
 			string80	"RELEASE"
 
 			string80	"ON"
 
+			string80	"WHILE"			; 35
+			string80	"WEND"			; 36
+			;	TOKEN_WEND = 35
+			string80	"LOOP"			; 37
+			;	TOKEN_LOOP = 36
+			string80	"EXIT"			; 38
+
 			; Extensions dBase
 			string80	"USE"
+			string80 	"LIST"			; 40
+			string80	"SKIP"
+
+			; Intégré à cmnd_set
+			; string80	"SET-FIELDS"		; SET FIELDS TO [<liste_de_chmaps> | ALL] (dBase III)
+								; SET FIELDS [ON | OFF] (dBase III)
+
+			string80	"CLOSE"			;
+
+			; TEMPORAIRE POUR TESTS
+			string80	"GOTO-TOP"
 
 			.byte	$00
 
 		.out .sprintf("\t*** cmnd_table: %d", *-cmnd_table)
 
+
+	.segment "INSTYACC"
 		; Règle de chaque instruction (dans l'ordre de cmnd_table)
+		; Dépendant de la position en mémoire
 		yacc_tbl:
 			.word	RULE_TEXT
 			.word	RULE_CANCEL
@@ -107,7 +132,8 @@
 			.word	RULE_IF
 			.word	RULE_ELSE
 			.word	RULE_ENDIF
-			.word	RULE_SET_DATE
+			; Intégré à cmnd_set
+			; .word	RULE_SET_DATE
 			.word	RULE_RUN
 			.word	RULE_RUN
 			.word	RULE_AT
@@ -129,10 +155,25 @@
 
 			.word	RULE_ON
 
+			.word	RULE_WHILE
+			.word	RULE_LOOP		; RULE_WEND == RULE_LOOP
+			.word	RULE_LOOP
+			.word	RULE_EXIT
+
 			; Extensions dBase
 			.word	RULE_USE
+			.word	RULE_LIST
+			.word	RULE_SKIP
+			; Intégré à cmnd_set
+			;.word	RULE_SET_FIELDS
+			.word	RULE_CLOSE
 
+			; TEMPORAIRE POUR TESTS
+			.word	RULE_GOTOP
+
+	.segment "INSTJMP"
 		; Liste des cibles possibles des règles (dernier octet d'une règle)
+		; Dépendant de la position en mémoire
 		cmnd_addr:
 			.addr	cmnd_text
 			.addr	cmnd_cancel
@@ -153,7 +194,8 @@
 			.addr	cmnd_if
 			.addr	cmnd_else
 			.addr	cmnd_endif
-			.addr	cmnd_set_date
+			; Intégré à cmnd_set
+			; .addr	cmnd_set_date
 			.addr	cmnd_run
 			;.addr	cmnd_run			; !
 			.addr	cmnd_at
@@ -174,10 +216,24 @@
 
 			.addr	cmnd_on
 
+			.addr	cmnd_do_while
+			.addr	cmnd_wend
+			.addr	cmnd_loop
+			.addr	cmnd_exit
+
 			; Extensions dBase
 			.addr	cmnd_use
+			.addr	cmnd_list
+			.addr	cmnd_skip
+			; Intégré à cmnd_set
+			;.word	cmnd_set_fields
+			.addr	cmnd_close
+
+			; TEMPORAIRE POUR TESTS
+			.addr	cmnd_goto_top
 
 		; Commandes dans l'ordre de cmnd_addr
+		; Indépendant de la position en mémoire
 		.enum CMND
 			TEXT
 			CANCEL
@@ -198,7 +254,7 @@
 			IF
 			ELSE
 			ENDIF
-			SET_DATE
+			; SET_DATE
 			RUN
 			; RUN					; !
 			AT
@@ -219,14 +275,28 @@
 
 			ON
 
+			WHILE
+			WEND
+			LOOP
+			EXIT
+
 			; Extensions dBase
 			USE
+			LIST
+			SKIP
+			; SET_FIELDS
+			CLOSE
+
+			; TEMPORAIRE POUR TESTS
+			GOTOP
 
 			NOOP =$ff
 		.endenum
 
 
 		; Règles syntaxiques
+		; Dépendant de la position en mémoire (à cause des xxx_opt)
+	.segment "INSTYACC"
 		syn_tbl:
 			; On peut fusionner les 3 règles suivantes, dans ce cas
 			; CMND:XXX peut faire la différence entre les 2 instructions
@@ -243,7 +313,8 @@
 
 			RULE_SET:
 				;.byte	OPT, ON_OFF, EOL, CMND::SET
-				.byte	OPT, <set_opt, >set_opt, ON_OFF, EOL, CMND::SET
+				; -OK- .byte	OPT, <set_opt, >set_opt, ON_OFF, EOL, CMND::SET
+				.byte	OPT, <set_opt, >set_opt, ON_OFF, EOI, CMND::SET
 
 			RULE_WAIT:
 				.byte	STRINGZ, TO_IDENTZ, EOL, CMND::WAIT
@@ -276,7 +347,7 @@
 				.byte	TERM, LITERAL, "T",'O'+$80, IDENT, EOL, CMND::STORE
 
 			RULE_DISPLAY:
-				.byte	IDENT, EOL, CMND::DISPLAY
+				.byte	IDENTZ, EOL, CMND::DISPLAY
 
 
 			RULE_PRINT:
@@ -301,17 +372,22 @@
 				; Modifier la règle: EXPR_L, EOI, CMND::IF
 				; Version dBase
 				;.byte	EXPR1, CMP_OP, EXPR, EOL, CMND::IF
+				; Avant IIF()
+				; .byte EXPR_L, EOI, CMND::IF
+				; Si IIF()
 				.byte EXPR_L, EOL, CMND::IF
 
 			RULE_ELSE:
 				.byte	TO_EOL, EOL, CMND::ELSE
 
 			RULE_ENDIF:
+				; Tout ce qui est après ENDIF n'est pas pris en compte
 				.byte	TO_EOL, EOL, CMND::ENDIF
 
-			RULE_SET_DATE:
-				; .byte	DATE_FMT, EOL, CMND::SET_DATE
-				.byte	OPT, <opt_date_fmt, >opt_date_fmt, EOL, CMND::SET_DATE
+			; Intégré à cmnd_set
+			;RULE_SET_DATE:
+			;	; .byte	DATE_FMT, EOL, CMND::SET_DATE
+			;	.byte	OPT, <opt_date_fmt, >opt_date_fmt, EOL, CMND::SET_DATE
 
 			RULE_RUN:
 				;.byte	STRING, EOL, CMND::RUN
@@ -339,7 +415,7 @@
 				.byte	TO_EOL, EOL, CMND::PARAMETERS
 
 			RULE_GOTO:
-				.byte	IDENT, EOL, CMND::GOTO
+				.byte	TERM, EOL, CMND::GOTO
 
 			RULE_CALL:
 				.byte	IDENT, EOL, CMND::CALL
@@ -366,9 +442,43 @@
 			RULE_ON:
 				.byte	OPT, <opt_on, >opt_on, TO_EOL, EOL, CMND::ON
 
+			RULE_WHILE:
+				; Modifier la règle: EXPR_L, EOI, CMND::IF
+				; Version dBase
+				;.byte	EXPR1, CMP_OP, EXPR, EOL, CMND::IF
+				.byte EXPR_L, EOL, CMND::WHILE
+
+			RULE_WEND:
+				; Tout ce qui est après WEND n'est pas pris en compte
+				.byte	TO_EOL, EOL, CMND::WEND
+
+			RULE_EXIT:
+				.byte	EOL, CMND::EXIT
+
+			RULE_LOOP:
+				.byte	EOL, CMND::LOOP
+
 			; Extensions dBase
 			RULE_USE:
 				.byte	FILENAMEZ, EOL, CMND::USE
+
+			RULE_LIST:
+				.byte	EOL, CMND::LIST
+
+			RULE_SKIP:
+				; .byte	TERM_N, EOL, CMND::SKIP
+				.byte	TERM_NZ, EOL, CMND::SKIP
+
+			; Intégré à cmnd_set
+			;RULE_SET_FIELDS:
+			;	.byte	LITERAL, "T",'O'+$80, IDENT, EOL, CMND::SET_FIELDS
+
+			RULE_CLOSE:
+				.byte OPT, <opt_close, >opt_close, EOL, CMND::CLOSE
+
+			; TEMPORAIRE POUR TESTS
+			RULE_GOTOP:
+				.byte EOL, CMND::GOTOP
 
 		.out .sprintf("\t*** syn_tbl: %d", *-syn_tbl)
 		.if ::LOOKUP_TABLE_PAGE
@@ -380,81 +490,106 @@
 		;			Fonctions
 		; --------------------------------------------------------------
 		; Liste des instructions			; Equivalent submit
+		; Indépendant de la position en mémoire
+	.segment "FUNCTBL"
 		func_table:
 			; Argument numérique
-			string80	"CHR("
-			string80	"INT("
-			string80	"SPACE("
-			string80	"STR("
-			string80	"HEX("
-			string80	"OCT("
-			string80	"BIN("
-			string80	"ABS("
-			string80	"PEEK("			; Supplément perso
-				; TOKEN_PEEK=8			; Défini dans dbase.inc
-			string80	"DEEK("			; Supplément perso
+			string80	"CHR"
+			string80	"INT"
+			string80	"SPACE"
+			string80	"STR"
+			string80	"HEX"
+			string80	"OCT"
+			string80	"BIN"
+			string80	"ABS"
+			string80	"FKLABEL"
+			string80	"PEEK"			; Supplément perso
+				; TOKEN_PEEK=9			; Défini dans dbase.inc
+			string80	"DEEK"			; Supplément perso
+
+			; Extensions dBase
+			string80	"FIELD"
 
 			; Argument chaine
-			string80	"LEN("
-			string80	"TRIM("
-			string80	"LTRIM("
-			string80	"RTRIM("
-			string80	"VAL("
-			string80	"UPPER("		; !() en dBase II
-			string80	"LOWER("
-			string80	"ISUPPER("
-			string80	"ISLOWER("
-			string80	"FILE("
-			string80	"GETENV("		; pwd [getenv("PATH")]
+			string80	"LEN"
+			string80	"TRIM"			; dBase III: TRIM() == RTRIM()
+			string80	"LTRIM"
+			string80	"RTRIM"
+			string80	"VAL"
+			string80	"UPPER"		; !() en dBase II
+			string80	"LOWER"
+			string80	"ISUPPER"
+			string80	"ISLOWER"
+			string80	"FILE"
+			string80	"GETENV"		; pwd [getenv("PATH")]
 
-			string80	"ASC("
+			string80	"ASC"
 
 			; Argument expression
-			string80	"TYPE("
-				; TOKEN_TYPE=22			; Défini dans dbase.inc
-			string80	"ISALPHA("
+			string80	"TYPE"
+				; TOKEN_TYPE=24			; Défini dans dbase.inc
+			string80	"ISALPHA"
 
 			; Arguments: chaine, numérique
-			string80	"LEFT("
-			string80	"RIGHT("
-			string80	"REPLICATE("
+			string80	"LEFT"
+			string80	"RIGHT"
+			string80	"REPLICATE"
 
 			; Aucun argument
-			string80	"ROW("
-			string80	"COL("
-			string80	"DISKSPACE("
-			string80	"ERROR("
-			string80	"MESSAGE("
-			string80	"OS("
-			string80	"TIME("
-			string80	"VERSION("
-			string80	"INKEY("
+			string80	"ROW"
+			string80	"COL"
+			string80	"DISKSPACE"
+			string80	"ERROR"
+			string80	"MESSAGE"
+			string80	"OS"
+			string80	"TIME"
+			string80	"VERSION"
+			string80	"INKEY"
+			string80	"FKMAX"
 
-			string80	"DATE("
+			string80	"DATE"
+
+			string80	"ISCOLOR"
+
+			; Extensions dBase
+			string80	"BOF"
+			string80	"EOF"
+			string80	"RECNO"
+			string80	"RECCOUNT"
+			string80	"RECSIZE"
+			string80	"DBF"
+			string80	"DELETED"
+			string80	"LUPDATE"
 
 			; Argument date
-			string80	"DTOC("
-			string80	"DAY("
-			string80	"MONTH("
-			string80	"YEAR("
-			string80	"DOW("
-			string80	"CMONTH("
-			string80	"CDOW("
+			string80	"DTOC"
+			string80	"DAY"
+			string80	"MONTH"
+			string80	"YEAR"
+			string80	"DOW"
+			string80	"CMONTH"
+			string80	"CDOW"
 
 			; Arguments: chaine, chaine
-			string80	"AT("
+			string80	"AT"
 
 			; Arguments: chaine, numérique, numérique
-			string80	"SUBSTR("		; $() en dBase II
+			string80	"SUBSTR"		; $() en dBase II, dBase III+: 3ième paramètre optionnel
 
 			; Arguments: numérique, numérique
-			string80	"MAX("
-			string80	"MIN("
+			string80	"MAX"
+			string80	"MIN"
 
-			string80	"SPEEK("		; Supplément perso
+			string80	"SPEEK"			; Supplément perso
 
 			; Arguments: chaine, numérique, numérique, chaine
-			string80	"STUFF("
+			string80	"STUFF"
+
+			; Arguments: numérique, chaine
+			string80	"TRANSFORM"
+
+			; Arguments: logique, expr, expr
+			string80	"IIF"
 
 			.byte	$00
 
@@ -465,6 +600,8 @@
 			; ]
 		.endif
 
+	.segment "FUNCJMP"
+		; Dépendant de la position en mémoire
 		func_addr:
 			; Argument numérique
 			.word	fn_chr
@@ -475,8 +612,11 @@
 			.word	fn_oct
 			.word	fn_bin
 			.word	fn_abs
+			.word	fn_fklabel
 			.word	fn_peek
 			.word	fn_peek			; peek / deek
+
+			.word	fn_dbf_field
 
 			; Argument chaine
 			.word	fn_len
@@ -512,8 +652,20 @@
 			.word	fn_time
 			.word	fn_version
 			.word	fn_inkey
+			.word	fn_fkmax
 
 			.word	fn_date
+
+			.word	fn_iscolor
+
+			.word	fn_dbf_bof
+			.word	fn_dbf_eof
+			.word	fn_dbf_recno
+			.word	fn_dbf_reccount
+			.word	fn_dbf_recsize
+			.word	fn_dbf_dbf
+			.word	fn_dbf_deleted
+			.word	fn_dbf_lupdate
 
 			; Argument date
 			.word	fn_dtoc
@@ -539,6 +691,14 @@
 			; Arguments: chaine, numérique, numérique, chaine
 			.word	fn_stuff
 
+			; Arguments: numérique, chaine
+			.word	fn_transform
+
+			; Arguments: logique, expr, expr
+			.word	fn_iif
+
+	.segment "FUNCYACC"
+		; Dépendant de la position en mémoire
 		func_yacc_tbl:
 			; Argument numérique
 			.word	RULE_FN_N
@@ -550,6 +710,10 @@
 			.word	RULE_FN_N
 			.word	RULE_FN_N
 			.word	RULE_FN_N
+			.word	RULE_FN_N
+			.word	RULE_FN_N
+
+			; Extensions dBase
 			.word	RULE_FN_N
 
 			; Argument chaine
@@ -586,7 +750,20 @@
 			.word	RULE_FN_
 			.word	RULE_FN_
 			.word	RULE_FN_
+			.word	RULE_FN_
 
+			.word	RULE_FN_
+
+			.word	RULE_FN_
+
+			; Extensions dBase
+			.word	RULE_FN_
+			.word	RULE_FN_
+			.word	RULE_FN_
+			.word	RULE_FN_
+			.word	RULE_FN_
+			.word	RULE_FN_
+			.word	RULE_FN_
 			.word	RULE_FN_
 
 			; Argument date
@@ -613,100 +790,157 @@
 			; Arguments: chaine, numérique, numérique, chaine
 			.word	RULE_FN_CNNC
 
+			; Arguments expression, chaine
+			.word	RULE_FN_XC
+
+			; Arguments: logique, expr, expr
+			.word	RULE_FN_LXX
+
+	.segment "FUNCYACC"
+		; Indépendant de la position en mémoire
 		func_syn_tbl:
 			RULE_FN_:
-				.byte	')'+$80, EOI
+				.byte	'('+$80, ')'+$80, EOI
 
 			RULE_FN_X:
-				.byte	EXPR, ')'+$80, EOI
+				.byte	'('+$80, EXPR, ')'+$80, EOI
 
 			RULE_FN_N:
-				.byte	EXPR_N, ')'+$80, EOI
+				.byte	'('+$80, TERM_N, ')'+$80, EOI
 
 			RULE_FN_C:
-				.byte	EXPR_C, ')'+$80, EOI
+				.byte	'('+$80, EXPR_C, ')'+$80, EOI
 				;.byte	TERM_C, ')'+$80, EOI
 
 			RULE_FN_DT:
-				.byte	EXPR_D, ')'+$80, EOI
+				.byte	'('+$80, EXPR_D, ')'+$80, EOI
 
 			RULE_FN_CN:
 				; .byte	PARAM_S, ','+$80, PARAM_N, ')'+$80, EOL, CMND::REPLICATE
-				.byte	EXPR_C, ','+$80, EXPR_N, ')'+$80, EOI
+				.byte	'('+$80, EXPR_C, ','+$80, EXPR_N, ')'+$80, EOI
 
 			RULE_FN_CNN:
-				.byte	EXPR_C, ','+$80, EXPR_N1, ','+$80, EXPR_N, ')'+$80, EOI
+				.byte	'('+$80, EXPR_C, ','+$80, EXPR_N1, ','+$80, EXPR_N, ')'+$80, EOI
 
 			RULE_FN_CC:
-				.byte	EXPR_C1, ','+$80, EXPR_C, ')'+$80, EOI
+				.byte	'('+$80, EXPR_C1, ','+$80, EXPR_C, ')'+$80, EOI
 
 			RULE_FN_NN:
-				.byte	EXPR_N1, ','+$80, EXPR_N, ')'+$80, EOI
+				.byte	'('+$80, EXPR_N1, ','+$80, EXPR_N, ')'+$80, EOI
 
 			RULE_FN_CNNC:
-				.byte	EXPR_C1, ','+$80, EXPR_N1, ','+$80, EXPR_N, ','+$80, EXPR_C, ')'+$80, EOI
+				.byte	'('+$80, EXPR_C1, ','+$80, EXPR_N1, ','+$80, EXPR_N, ','+$80, EXPR_C, ')'+$80, EOI
 
+		;	RULE_FN_NC:
+		;		.byte	EXPR_N, ','+$80, EXPR_C1, ')'+$80, EOI
+
+			RULE_FN_XC:
+				.byte	'('+$80, EXPR1, ','+$80, EXPR_C, ')'+$80, EOI
+
+			RULE_FN_LXX:
+				.byte	'('+$80, EXPR_L, ','+$80, EXPR1, ','+$80, EXPR, ')'+$80, EOI
+
+	.segment "FUNCTBL"
 		; --------------------------------------------------------------
 		;			SET xxx
 		; --------------------------------------------------------------
+		; Indépendant de la position en mémoire
 		set_opt:
-			string80	"ALTERNATE"	; on/OFF  |  TO [<fichier>] | on/OFF
-			string80	"BELL"		; ON/off
-			string80	"CARRY"		; on/OFF
-			; string80	"CATALOG"	; on/OFF  |  TO [<filename>/?]  |  on/OFF
-			string80	"COLON"		; ON/off  (dBase II only)
-			string80	"CONFIRM"	; on/OFF
-			string80	"CONSOLE"	; ON/off
-			string80	"DEBUG"		; on/OFF
-			string80	"DELETE"	; on/OFF   (dBase III affiche DELETED)
-			; string80	"DELIMTERS"	; on/OFF  |  TO [<expC>]/DEFAULT
-			; string80	"DEVICE"	; TO SCREEN/print
-			string80	"ECHO"
-			string80	"EJECT"		; dBase II only
-			; string80	"ENCRYPT"	; ON/off (non affiché par DISPLAY STATUS)
-			string80	"ESCAPE"	; ON/off
-			string80	"EXACT"		; on/OFF
-			; string80	"FIELDS"	; on/OFF  |  TO [<field list>/ALL]
-			; string80	"FIXED"		; on/OFF
-			; string80	"HEADING"	; ON/off  | TO <expC> (dBase II uniquement?)
-			; string80	"HELP"		; ON/off
-			; string80	"HISTORY"	; ON/off  |  TO <expN>
-			string80	"INTENSITY"	; ON/off
-			; string80	"MENUS"		; ON/off
-			string80	"LINKAGE"	; OFF/on  (dBase II only)
-			string80	"PRINT"		; on/OFF  |  TO [LPT1/LPT2/LPT3] / [COM1/COM2] / [\\<computer>\<device>=LPTx] (TO xxx => extension dBase III)
-			; string80	"STATUS"	; ON/off dBase III
-			string80	"RAW"		; OFF/on  (dBase II only)
-			string80	"SPACE"		; dBase II only
-			string80	"STEP"		; on/OFF
-			string80	"TALK"		; ON/off
-			; string80	"TITLE"		; ON/off
-
-			; dBase II: non affichés par DISPLAY STATUS
-			; dBase III: affichés
-			string80	"DELETED"	; alias de DELETE
-			string80	"DOHISTORY"	; on/OFF
-			string80	"SAFETY"	; ON/off
-			string80	"SCOREBOARD"	; ON/off
-			string80	"UNIQUE"	; on/OFF
-
+			; SET xx ON | OFF
+			; string80	"BELL"		; ON/off
+			; string80	"CARRY"		; on/OFF
 			string80	"CENTURY"	; on/OFF
-			OPT_CENTURY = 24
+			; OPT_CENTURY = 0
+			;	string80	"COLON"		; ON/off  (dBase II only)
+			; string80	"CONFIRM"	; on/OFF
+			; string80	"CONSOLE"	; ON/off
+			; string80	"DEBUG"		; on/OFF
+			;	string80	"DELETE"	; on/OFF   (dBase II)
+			string80	"DELETED"	; on/OFF   (dBase III)
+			; OPT_DELETED = 1
+
+			; string80	"DOHISTORY"	; on/OFF
+			; string80	"ECHO"		; on/OFF
+			;	string80	"EJECT"		; dBase II only
+			; string80	"ENCRYPT"	; ON/off (non affiché par DISPLAY STATUS)
+			; string80	"ESCAPE"	; ON/off
+			string80	"EXACT"		; on/OFF
+			; OPT_EXACT = 2
+			; string80	"FIXED"		; on/OFF
+			string80	"HEADINGS"	; ON/off
+			; OPT_HEADINGS = 3
+			; string80	"HELP"		; ON/off
+			; string80	"INTENSITY"	; ON/off (affiche la zone de saisie en video inverse ou non)
+			; string80	"MENUS"		; ON/off
+			;	string80	"LINKAGE"	; OFF/on  (dBase II only)
+			string80	"STATUS"	; on/OFF dBase III (l'aide dBase III+ 1.0 indique ON/off mais est à OFF au démarrage)
+			; OPT_STATUS = 4
+			;	string80	"RAW"		; OFF/on  (dBase II only)
+			; string80	"SAFETY"	; ON/off
+			; string80	"SCOREBOARD"	; ON/off
+			;	string80	"SPACE"		; dBase II only
+			; string80	"STEP"		; on/OFF
+			; string80	"TALK"		; ON/off
+			; string80	"TITLE"		; ON/off
+			; string80	"UNIQUE"	; on/OFF
 
 			; [ Ajout
 			string80	"CURSOR"	; ON/off
-			OPT_CURSOR = 25
+			; OPT_CURSOR = 5
+			string80	"DBASERR"	; on/OFF
+			; OPT_DBASERR = 6
 			; ]
+
+			; SET xxx ON | OFF | TO ...
+			; Au delà de _OPT_ON_OFF_TO_, syntaxe SET option [ON | OFF | TO xxx]
+			; _OPT_ON_OFF_TO_ = 6
+			; string80	"ALTERNATE"	; on/OFF  |  TO [<fichier>] | on/OFF
+			; string80	"COLOR"		; on/off | TO <standard>[,<réhaussé>][,<bordure>][,<fond>] | TO <encre>/<papier>
+			; string80	"CATALOG"	; on/OFF  |  TO [<filename>/?]  |  on/OFF
+			; string80	"DELIMTERS"	; on/OFF  |  TO [<expC>]/DEFAULT (Le premier caractère sera placé au début du champ, le second à la fin; exemple SET DELIMITERS TO "[]')
+			string80	"FIELDS"	; on/OFF  |  TO [<field list>/ALL]
+			; OPT_FIELDS = 7
+			; string80	"HISTORY"	; ON/off  |  TO <expN>
+			; string80	"PRINT"		; on/OFF  |  TO [LPT1/LPT2/LPT3] / [COM1/COM2] / [\\<computer>\<device>=LPTx] (TO xxx => extension dBase III)
+
+			; SET xxx TO ...
+			; _OPT_TO_ = 8
+			; Au delà de _OPT_TO_, syntaxe SET option TO xxx
+			; string80	"DECIMALS"	; TO <expN>
+			; string80	"DEFAULT"	; TO <disque>
+			; string80	"DEVICE"	; TO SCREEN/print
+			string80	"FILTER"	; TO [<condition>] | [FILE <filename> | ?]
+			; OPT_FILTER = 8
+			; string80	"FORMAT"	; TO [<filename> | ?]
+			; string80	"FUNCTION"	; <expN>|<expC1> TO <expC2> (si expC2 est nul remet la définition par défaut)
+			;	string80	"HEADING"	; TO <expC> (dBase II)
+			; string80	"INDEX"		; TO [<liste fichiers index]
+			; string80	"MARGIN"	; TO <expN>
+			; string80	"MEMOWIDTH"	; TO <expN>
+			string80	"MESSAGE"	; TO [<message>]
+			; OPT_MESSAGE = 9
+			; string80	"ORDER"		; TO [<expN>]
+			; string80	"PATH"		; TO [<liste répertoires>]
+			; string80	"PROCEDURE"	; TO [<filename>]
+			; string80	"RELATION"	; [TO <expression clé> | RECNO() / <expN>] INTO <alias>
+			; strinf80	"TYPEAHEAD"	; TO <expN>
+			; string80	"VIEW"		; TO <filename> | ?
 
 			; dBase ??? (> III+)
 			; remplace le caractère de séparation de la date par le premier caracère de la chaine, si pas de chaine => revient à celui par défaut du format)
 			; string80	"MARK"		; TO [ / "x"]
+
+			; SET xxx <exp>
+			; _OPT_EXPR_ = 10
+			string80	"DATE"		; <format>
+			; OPT_DATE = 10
+
 			.byte	$00
 
 		opt_on_off:
 			string80	"OFF"
 			string80	"ON"
-			.byte	$00
+			; .byte	$00
 
 		opt_to:
 			string80	"TO"
@@ -732,6 +966,7 @@
 		; --------------------------------------------------------------
 		;			Date
 		; --------------------------------------------------------------
+		; Indépendant de la position en mémoire
 		; Table 12
 		days:
 			string80	"Dimanche"
@@ -760,6 +995,7 @@
 		; --------------------------------------------------------------
 		;			DISPLAY
 		; --------------------------------------------------------------
+		; Indépendant de la position en mémoire
 		opt_display:
 			string80	"FILES"
 			string80	"HISTORY"
@@ -771,6 +1007,7 @@
 		; --------------------------------------------------------------
 		;			CLEAR
 		; --------------------------------------------------------------
+		; Indépendant de la position en mémoire
 		opt_clear:
 			string80	"ALL"
 			OPT_ALL = $00
@@ -786,6 +1023,7 @@
 		; --------------------------------------------------------------
 		;			DO
 		; --------------------------------------------------------------
+		; Indépendant de la position en mémoire
 		opt_do:
 			string80	"WITH"
 			.byte	$00
@@ -793,6 +1031,7 @@
 		; --------------------------------------------------------------
 		;			RESTORE
 		; --------------------------------------------------------------
+		; Indépendant de la position en mémoire
 		opt_restore:
 			string80	"ADDITIVE"
 			.byte	$00
@@ -800,6 +1039,7 @@
 		; --------------------------------------------------------------
 		;			MODIFY
 		; --------------------------------------------------------------
+		; Indépendant de la position en mémoire
 		opt_modify:
 			string80	"COMMAND"
 			string80	"FILE"
@@ -808,6 +1048,7 @@
 		; --------------------------------------------------------------
 		;			FILTER
 		; --------------------------------------------------------------
+		; Indépendant de la position en mémoire
 		opt_filter:
 			string80	"ALL LIKE"
 			string80	"ALL EXCEPT"
@@ -816,6 +1057,7 @@
 		; --------------------------------------------------------------
 		;			ON
 		; --------------------------------------------------------------
+		; Indépendant de la position en mémoire
 		opt_on:
 			string80	"KEY"
 			string80	"ERROR"
@@ -823,22 +1065,48 @@
 			.byte	$00
 
 		; --------------------------------------------------------------
+		;			CLOSE
+		; --------------------------------------------------------------
+		; Indépendant de la position en mémoire
+		opt_close:
+			string80	"ALL"
+			string80	"ALTERNATE"
+			string80	"DATABASES"
+			string80	"FORMAT"
+			string80	"INDEX"
+			string80	"PROCEDURE"
+			.byte	$00
+
+		; --------------------------------------------------------------
 		;		Opérateurs de comparaison
 		; --------------------------------------------------------------
+		; Indépendant de la position en mémoire
 		cmp_oper:
-			string80	"<"
-			string80	">"
-			string80	"<>"
+			string80	"<"		; 000
+			string80	">"		; 001
+			string80	"<>"		; 010
 			;string80	"!="
 			;string80	"/="
-			string80	"="
-			string80	"<="
-			string80	">="
+			string80	"="		; 011
+			string80	"<="		; 100
+			string80	">="		; 101
+			string80	"$"		; 110
+			.byte	$00
+
+		; --------------------------------------------------------------
+		;			Opérateurs logiques
+		; --------------------------------------------------------------
+		; Indépendant de la position en mémoire
+		logic_oper:
+			string80	".NOT."
+		;	string80	".OR."
+		;	string80	".AND."
 			.byte	$00
 
 		; --------------------------------------------------------------
 		;			Environnement
 		; --------------------------------------------------------------
+		; Indépendant de la position en mémoire
 		osenv:
 			string80	"PATH"
 			.byte	$00
@@ -852,6 +1120,7 @@
 		; --------------------------------------------------------------
 		;				Erreur
 		; --------------------------------------------------------------
+		; Indépendant de la position en mémoire
 		fn_message_cmnd:
 			.asciiz	"dbaserr -q 0,    /a/dbase.msg"
 

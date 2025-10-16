@@ -34,6 +34,9 @@
 
 .import tabase
 
+; From dbf.lib
+.import dbf_close
+
 ;----------------------------------------------------------------------
 ;				exports
 ;----------------------------------------------------------------------
@@ -91,20 +94,26 @@ OPT_MEMORY = $03
 ;----------------------------------------------------------------------
 .proc cmnd_clear
 		lda	opt_num
-		beq	clr_memory
+		bne	clr_screen
 
+	clr_all:
+		jsr	dbf_close
+		clc
+		rts
+
+
+	clr_screen:
 		cmp	#$ff
-		bne	memory
+		bne	clr_memory
 
 		cputc	$0c
 		clc
 		rts
 
-	memory:
+	clr_memory:
 		cmp	#OPT_MEMORY
 		bne	end
 
-	clr_memory:
 		; Nombre de variables dans la table
 		lda	#$00
 		sta	vars_index

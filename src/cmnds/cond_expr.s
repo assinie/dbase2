@@ -48,6 +48,12 @@
 .import push_if
 .import pop_else
 
+; From fn_at.s
+.import fn_at
+
+; From smnd_set
+.import get_option
+
 ; Utile uniquement pour la vérification de syntaxe compatible submit
 .importzp line_ptr
 
@@ -55,6 +61,7 @@
 ;				exports
 ;----------------------------------------------------------------------
 .export cond_expr
+.export cond_value
 
 ; Pour fn_max, fn_min
 .export numcmp
@@ -80,6 +87,7 @@ len1 := save_a
 	.segment "DATA"
 		unsigned char save_a
 		unsigned char len2
+		unsigned char cond_value
 .popseg
 
 ;----------------------------------------------------------------------
@@ -100,8 +108,11 @@ len1 := save_a
 ; Entrée:
 ;
 ; Sortie:
+;	A: résultat du test ou code erreur
+;	X: modifié
+;	Y: inchangé
 ;	C: 1 -> erreur
-;	V: 1 -> test vrai, il peut y avoir une autre instrution à la suite
+;	V: 1 -> test vrai, il peut y avoir une autre instruction à la suite
 ;	   (compatibilité submit)
 ;
 ; Variables:
@@ -111,6 +122,8 @@ len1 := save_a
 ;		-
 ; Sous-routines:
 ;	-
+;----------------------------------------------------------------------
+; /!\ DOIT CONSERVER Y si appelé depuis get_expr_logic
 ;----------------------------------------------------------------------
 .proc cond_expr
 ;		lda	input_mode
@@ -141,6 +154,9 @@ len1 := save_a
 ;		bcs	error43
 		; ]
 
+		; Sauvegarde Y
+		sty	save_y+1
+
 		; Paramètres de même type?
 		lda	param1_type
 		and	#$7f
@@ -151,6 +167,22 @@ len1 := save_a
 		;beq	end
 		bne	error9
 
+	suiteC:
+		cmp	#'C'
+		bne	suiteN
+
+		jsr	strcmp
+		bvc	test
+
+	suiteN:
+		; Operateur '$' invalide si pas type 'C'
+		pha
+		lda	comp_oper
+		cmp	#OP_IN
+		beq	error107
+		cmp	#(OP_IN ^ $ff)
+		pla
+
 		cmp	#'N'
 		bne	suiteD
 
@@ -159,18 +191,10 @@ len1 := save_a
 
 	suiteD:
 		cmp	#'D'
-		bne	suiteC
+		bne	suiteL
 
 		jsr	datecmp
 		bvc	test
-
-	suiteC:
-		cmp	#'C'
-		bne	suiteL
-
-		jsr	strcmp
-		bvc	test
-
 
 	suiteL:
 		; cmp	#'L'
@@ -181,6 +205,7 @@ len1 := save_a
 		bpl	testL
 
 		lda	logic_value
+		sta	cond_value
 		clc
 		rts
 
@@ -190,7 +215,7 @@ len1 := save_a
 	test:
 		jsr	compare
 		sta	logic_value
-
+		sta	cond_value
 		; [ syntaxe submit
 ;		beq	end
 ;		; Test vrai -> V=1 (pour yacc EOI)
@@ -210,6 +235,8 @@ len1 := save_a
 ;
 ;	true:
 	end:
+	save_y:
+		ldy	#$ff
 		clc
 		rts
 		; ]
@@ -232,16 +259,23 @@ len1 := save_a
 ;		lda	#10
 ;		sec
 ;		rts
+	error107:
+		pla
+		; 107 Invalid operator.
+		lda	#107
+		bne	err_end
 
 	error9:
 		; 9 Data type mismatch.
+		lda	#9
+
+	err_end:
 		; Replace Y = offset second membre de la comparaison
 		; (en fait le dernier terme traité ce qui peut être un paramètre
 		; d'une fonction du second membre)
 		; TODO: Il faudrait que get_expr_logic conserve l'offset réel du second
 		; membre de la comparaison dans une variable
 		ldy	lex_prev_y
-		lda	#9
 
 		sec
 		rts
@@ -253,12 +287,15 @@ len1 := save_a
 ; Entrée:
 ;	-
 ; Sortie:
-;	-
+;	- A: modifié
+;	- X: inchangé
+;	- Y: inchangé
 ; Variables:
 ;	Modifiées:
 ;		-
 ;	Utilisées:
-;		-
+;		- param1
+;		- logic_value
 ; Sous-routines:
 ;	-
 ;----------------------------------------------------------------------
@@ -273,14 +310,20 @@ len1 := save_a
 ; Entrée:
 ;	-
 ; Sortie:
-;	-
+;	- A: modifié
+;	- X: inchangé
+;	- Y: inchangé
+;
 ; Variables:
 ;	Modifiées:
 ;		-
 ;	Utilisées:
-;		-
+;		- pfac
+;		- pfac1
 ; Sous-routines:
 ;	-
+;----------------------------------------------------------------------
+; /!\ Peut modifier le flag V
 ;----------------------------------------------------------------------
 .proc numcmp
 .ifdef UNSIGNED_CMP
@@ -446,16 +489,22 @@ len1 := save_a
 ;----------------------------------------------------------------------
 ;
 ; Entrée:
-;
+;	-
 ; Sortie:
+;	- A: modifié
+;	- X: inchangé
+;	- Y: inchangé
 ;
 ; Variables:
 ;	Modifiées:
 ;		-
 ;	Utilisées:
-;		-
+;		- param1
+;		- bcd_value
 ; Sous-routines:
 ;	-
+;----------------------------------------------------------------------
+; /!\ Comparaison valable pour des fichiers dBaase II
 ;----------------------------------------------------------------------
 .proc datecmp
 		; bcd: 20 23 01 07
@@ -486,18 +535,60 @@ len1 := save_a
 ;----------------------------------------------------------------------
 ;
 ; Entrée:
-;
+;	-
 ; Sortie:
+;	- A:
+;	- X:
+;	- Y:
 ;
 ; Variables:
 ;	Modifiées:
-;		-
+;		- len2
+;		- len1  (save_a)
+;		- comp_oper
 ;	Utilisées:
-;		-
+;		- comp_oper
+;		- pfac
+;		- string
+;		- param1
 ; Sous-routines:
-;	-
+;	- fn_at
+;----------------------------------------------------------------------
+; /!\ dBase ne fait la comparaison que sur la longueur de la chaine
+;     à droite de l'expression sauf si SET EXACT ON
 ;----------------------------------------------------------------------
 .proc strcmp
+		lda	#OP_NE
+		sta	op_in+1
+
+		; ... $ ... ?
+		lda	comp_oper
+		cmp	#OP_IN
+		beq	in
+
+		; .NOT ... $ ... ?
+		cmp	#(OP_IN ^ $ff)
+		bne	comp
+
+		lda	#OP_EQ
+		sta	op_in+1
+
+	in:
+		; Operateur '$' => appel de fn_at()
+		jsr	fn_at
+
+		; Indique opérateur <>
+		sec
+	op_in:
+		lda	#OP_NE
+		sta	comp_oper
+
+		; pfac == 0 si la chaine n'a pas été trouvée, dans ce cas Z=1
+		lda	pfac
+		rts
+
+		; ... <op> ...
+	comp:
 		; Calcule la longueur de la seconde chaîne
 		ldx	#$ff
 	loop2:
@@ -514,7 +605,7 @@ len1 := save_a
 		lda	param1,x
 		bne	loop1
 
-		stx	save_a
+		stx	len1
 
 		; Compare les longueurs
 		cpx	len2
@@ -535,26 +626,47 @@ len1 := save_a
 		iny
 		dex
 		bne	loop
+		; Ici Z=1, C=1 (à cause du cmp string,y)
+		; Si SET EXACT ON => lencmp
+		; Si SET EXACT OFF => vérifier Y = len2
+		; [
+		lda	#OPT_EXACT
+		jsr	get_option
+		bne	lencmp
 
+		cpy	len2
+		rts
+		; ]
 	lencmp:
-		lda	save_a
+		lda	len1
 		cmp	len2
-
+		; [
+	;	rts
+		; ]
 	end:
+		; Si on arrive via lencmp => rts
+		; Si on arrive via bne end
+		;    Si SET EXACT ON => RTS
+		;    Si SET EXACT OFF => vérifier Y > len2
 		rts
 .endproc
 
 ;----------------------------------------------------------------------
 ;
 ; Entrée:
+;	- flags fonction su résultat du test
+;	- comp_oper: code opérateur de comparaison
 ;
 ; Sortie:
+;	- A: $00->False, $FF->True
+;	- X: inchangé
+;	- Y: inchangé
 ;
 ; Variables:
 ;	Modifiées:
 ;		-
 ;	Utilisées:
-;		-
+;		- comp_oper
 ; Sous-routines:
 ;	-
 ;----------------------------------------------------------------------

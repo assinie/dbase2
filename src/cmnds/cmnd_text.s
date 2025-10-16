@@ -27,7 +27,7 @@
 ; From main
 .importzp line_ptr
 .import submit_line
-.import input_mode
+.import main_input_mode
 
 ; From readline
 .import readline
@@ -36,7 +36,7 @@
 .import _find_cmnd
 
 ; From file
-.import fgetline
+.import file_fgetline
 
 ; From submit
 .import submit
@@ -96,7 +96,7 @@
 ;	-
 ;----------------------------------------------------------------------
 .proc cmnd_text
-		lda	input_mode
+		lda	main_input_mode
 		bne	from_file
 
 	from_keyboard:
@@ -144,7 +144,7 @@
 ;		sty	line_ptr+1
 ;		jsr	fgets
 ;		ldx	#::LINE_MAX_SIZE
-		jsr	fgetline
+		jsr	file_fgetline
 		sta	line_ptr
 		sty	line_ptr+1
 		bcc	is_endtext

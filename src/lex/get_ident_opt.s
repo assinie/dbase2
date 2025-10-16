@@ -105,15 +105,15 @@
 		clv
 		lda	lex_ptr
 		jsr	get_ident
-		lda	#'I'
-		sta	param_type
+	;	lda	#'I'
+	;	sta	param_type
 		rts
 
 	no_ident:
 		lda	#$00
 		sta	ident
-		sta	param_type
-		tax
+	;	sta	param_type
+	;	tax
 
 		clc
 		rts

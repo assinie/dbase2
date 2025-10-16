@@ -1,4 +1,6 @@
 .ifndef _UTILS_MAC_
+	.feature string_escapes
+
 	;---------------------------------------------------------------------------
 	;
 	;---------------------------------------------------------------------------
@@ -8,6 +10,116 @@
 		        .byte .strat(arg,I)
 		.endrepeat
 		.byte .strat(arg,.strlen(arg)-1) ^ $80
+	.endmacro
+
+	;---------------------------------------------------------------------------
+	;
+	;---------------------------------------------------------------------------
+	__tokenf_nb .set 0
+	__tokeni_nb .set 0
+
+	;---------------------------------------------------------------------------
+	;
+	;---------------------------------------------------------------------------
+;	.scope CMND
+;		NOOP =$ff
+;	.endscope
+
+	;---------------------------------------------------------------------------
+	;
+	;---------------------------------------------------------------------------
+	.macro	add_function type, name, rule, addr
+		.if __tokenf_nb = 0
+			.out "Start of function table"
+		.endif
+
+		.pushseg
+			.if .paramcount = 4
+				.out .sprintf("\tFunction %02d: %s(%s) -> %c", __tokenf_nb, name, .string(rule), type)
+
+				; Remplace le .enum FUNC ... .endenum
+				; FUNC::.ident(.sprintf("%s", name)) := __tokenf_nb
+
+				; Token
+				.ident(.sprintf("TOKEN_%s", name)) := __tokenf_nb
+
+				; func_type:
+				.segment "FUNCTYPE"
+					.byte type
+
+				; func_table:
+				.segment "FUNCTBL"
+					.byte name
+					.byte '(' | $80
+
+				; func_addr:
+				.segment "FUNCJMP"
+					.word addr
+
+				; func_yacc_tbl:
+				.segment "FUNCYACC"
+					.word rule
+
+				__tokenf_nb .set __tokenf_nb +1
+
+			.else
+				.out "End of function table"
+
+				.segment "FUNCTBL"
+					.byte $00
+			.endif
+		.popseg
+	.endmacro
+
+	;---------------------------------------------------------------------------
+	;
+	;---------------------------------------------------------------------------
+	.macro add_instruction name, rule, addr, token
+		.if __tokeni_nb = 0
+			.out "Start of instruction table"
+		.endif
+
+		.pushseg
+			.if .paramcount >= 2
+				.out .sprintf("\tIntruction %02d: %s(%s)", __tokeni_nb, name, .string(rule))
+
+				.ifblank token
+					; Remplace le .enum CMND ... .endenum
+					CMND::.ident(.sprintf("%s", name)) := __tokeni_nb
+
+					; Token
+					.ident(.sprintf("TOKEN_%s", name)) := __tokeni_nb
+				.elseif .strlen(token) > 0
+					; Remplace le .enum CMND ... .endenum
+					CMND::.ident(.sprintf("%s", token)) := __tokeni_nb
+
+					; Token
+					.ident(.sprintf("TOKEN_%s", token)) := __tokeni_nb
+				.endif
+
+				; cmnd_table:
+				.segment "INSTTBL"
+					string80 name
+
+				; cmnd_addr:
+				.ifnblank addr
+					.segment "INSTJMP"
+						.word addr
+				.endif
+
+				; yacc_tbl:
+				.segment "INSTYACC"
+					.word rule
+
+				__tokeni_nb .set __tokeni_nb +1
+
+			.else
+				.out "End of instruction table"
+
+				.segment "INSTTBL"
+					.byte $00
+			.endif
+		.popseg
 	.endmacro
 
 	_UTILS_MAC_ = 1
